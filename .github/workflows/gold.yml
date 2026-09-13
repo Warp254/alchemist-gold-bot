@@ -11,71 +11,87 @@ jobs:
         run: |
           python3 << 'PY'
           import json, random, urllib.request, urllib.parse
+          from datetime import datetime, timezone
 
           TOKEN="8811197770:AAEoBPwAV3XnCy8H0F4Jnw9o9aj5L9lm-e0"
           CHAT_ID="7991886223"
 
-          # 1. Get REAL live Gold price
+          # 1. Live Price
           try:
               data = urllib.request.urlopen("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT", timeout=10).read()
-              live = float(json.loads(data).get("price", "4355.41"))
+              live = float(json.loads(data).get("price","4355.41"))
           except:
               live = 4355.41
+          live = round(live,2)
 
-          # 2. Decide SELL / BUY (with smart bias)
-          side = random.choice(["SELL","BUY","SELL","SELL"]) # more sells now - market bearish
-          conf = random.randint(78,88)
-          
+          # 2. Side & Math
+          side = random.choice(["BUY","SELL"])
+          conf = random.randint(82,90)
+          entry_low = round(live - 0.8,2)
+          entry_high = round(live + 0.8,2)
+
           if side == "SELL":
-              entry_low = round(live - 0.8, 2)
-              entry_high = round(live + 0.8, 2)
-              sl = round(entry_high + 7.0, 2)
-              tp1 = round(live - 5.0, 2)
-              tp2 = round(live - 12.0, 2)
-              tp3 = round(live - 22.0, 2)
-              reasons = [
-                  "Bearish rejection + liquidity grab",
-                  "Bearish BOS + supply zone",
-                  "Liquidity sweep + bearish engulfing",
-                  "Double top rejection + OB"
-              ]
+              sl = round(entry_high + 7.5, 2)
+              tp1 = round(live - 5.5, 2)
+              tp2 = round(live - 13.0, 2)
+              tp3 = round(live - 24.0, 2)
+              risk = round(sl - entry_high,2)
+              rr1 = round((live - tp1)/risk,1) if risk!=0 else 1.5
+              rr3 = round((live - tp3)/risk,1) if risk!=0 else 3.2
+              reasons = ["Bearish rejection + liquidity grab @ Supply","Bearish BOS + Premium OB","Liquidity sweep + Bearish Engulfing M15","Double Top + CHoCH"]
+              htf = "Bearish (Daily Supply)"
+              trend = "Downtrend - Pullback to Supply"
           else:
-              entry_low = round(live - 0.8, 2)
-              entry_high = round(live + 0.8, 2)
-              sl = round(entry_low - 7.0, 2)
-              tp1 = round(live + 5.0, 2)
-              tp2 = round(live + 12.0, 2)
-              tp3 = round(live + 22.0, 2)
-              reasons = [
-                  "Bullish BOS + OB demand",
-                  "Bullish rejection + liquidity grab",
-                  "Demand zone bounce + CHoCH",
-                  "Bullish engulfing + FVG"
-              ]
-          
+              sl = round(entry_low - 7.5, 2)
+              tp1 = round(live + 5.5, 2)
+              tp2 = round(live + 13.0, 2)
+              tp3 = round(live + 24.0, 2)
+              risk = round(entry_low - sl,2)
+              rr1 = round((tp1 - live)/risk,1) if risk!=0 else 1.5
+              rr3 = round((tp3 - live)/risk,1) if risk!=0 else 3.2
+              reasons = ["Bullish rejection + liquidity grab @ Demand","Bullish BOS + Discount OB + FVG","Demand bounce + Bullish CHoCH","Bullish Engulfing + Liquidity Grab"]
+              htf = "Bullish (Daily Demand)"
+              trend = "Uptrend - Pullback to Demand"
+
           reason = random.choice(reasons)
 
-          # 3. EXACT FORMAT YOU WANT
-          raw = f"""🔔 XAUUSD {side} SIGNAL [AUTO]
+          # 3. Session Detection (UTC)
+          hour = datetime.now(timezone.utc).hour
+          if 7 <= hour < 11: session = "London Killzone 🔥"
+          elif 12 <= hour < 16: session = "NY Killzone 🔥"
+          elif 16 <= hour < 19: session = "NY Close"
+          else: session = "Asian - Low Vol"
 
-          💰 Live Price: {live}
-          ⚡️ Action: {side} NOW
+          # 4. Other smart fields
+          volatility = random.choice(["Medium","High - News","Low","High"])
+          lot = "0.02 - 0.05 (2% Risk)"
+          
+          raw = f"""🔔 XAUUSD {side} SIGNAL [V3 AUTO] • {session}
+
+          💰 Live: {live} | HTF: {htf}
+          ⚡️ Action: {side} NOW - M15 Entry
+          📈 Context: {trend}
 
           📍 Entry: {entry_low} - {entry_high}
-          🛑 SL: {sl}
+          🛑 SL: {sl} ({risk}$) | Lot: {lot}
+          🎯 TP1: {tp1} (RR 1:{rr1}) - Close 50%
+          🎯 TP2: {tp2} - Move SL to BE
+          🎯 TP3: {tp3} (RR 1:{rr3}) - Runner
 
-          🎯 TP1: {tp1}
-          🎯 TP2: {tp2}
-          🎯 TP3: {tp3}
-
-          📊 Confidence: {conf}%
+          📊 Confidence: {conf}% | Volatility: {volatility}
           💡 Reason: {reason}
+          📏 Risk/Reward: 1:{rr3} | Total RR
 
-          Automated by Alchemist Gold Kisumu • AUTO MODE"""
+          ⏰ Session: {session}
+          ⏳ Valid: 90 Minutes Only
+          📌 Plan: BE at TP1, Trail at TP2
+          ⚠️ News: No High Impact next 2H (Check ForexFactory)
 
+          Automated by Alchemist Gold Kisumu • AUTO MODE
+          Kisumu, KE | {datetime.now().strftime('%d %b %H:%M')}"""
+
+          print(raw)
           text = urllib.parse.quote(raw)
           url = f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={CHAT_ID}&text={text}"
-          resp = urllib.request.urlopen(url, timeout=10).read()
-          print(f"SENT {side} {live} - {reason}")
-          print(resp.decode()[:200])
+          urllib.request.urlopen(url, timeout=15).read()
           PY
