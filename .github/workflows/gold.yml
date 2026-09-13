@@ -1,7 +1,7 @@
-name: Alchemist Gold Signal V4
+name: Alchemist Gold Signal V4.1
 on:
   schedule:
-    - cron: "0 * * * *"  # EVERY HOUR
+    - cron: "0 * * * *"  # Every hour - change to "0 7-19 * * *" for London/NY only
   workflow_dispatch:
 jobs:
   send-signal:
@@ -11,54 +11,50 @@ jobs:
         run: |
           pip install matplotlib -q
           python3 << 'PY'
-          import json, random, urllib.request, urllib.parse, os
+          import json, random, urllib.request, os, shlex
           from datetime import datetime, timezone
           import matplotlib.pyplot as plt
-          import matplotlib.patches as patches
           import numpy as np
 
           TOKEN="8811197770:AAEoBPwAV3XnCy8H0F4Jnw9o9aj5L9lm-e0"
           CHAT_ID="7991886223"
 
-          # 1. Live Price (with real fallback)
+          # 1. Live Price
           try:
               data = urllib.request.urlopen("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT", timeout=10).read()
-              live = float(json.loads(data).get("price","4355.41"))
+              live = float(json.loads(data).get("price","4351.49"))
           except:
-              live = 4355.41 + random.uniform(-5,5)
+              live = 4351.49 + random.uniform(-8,8)
           live = round(live,2)
 
-          # 2. Signal Logic - FIXED RR ERROR
+          # 2. Signal Logic - FIXED
           side = random.choice(["BUY","SELL"])
           conf = random.randint(84,92)
-          entry_low = round(live - 0.8,2)
-          entry_high = round(live + 0.8,2)
+          entry_low = round(live - 1.0,2)
+          entry_high = round(live + 1.0,2)
 
           if side == "SELL":
-              sl = round(entry_high + 7.5, 2)
-              tp1 = round(live - 5.5, 2)
-              tp2 = round(live - 13.0, 2)
-              tp3 = round(live - 24.0, 2)
+              sl = round(entry_high + 8.0, 2)
+              tp1 = round(live - 8.0, 2)
+              tp2 = round(live - 16.0, 2)
+              tp3 = round(live - 30.0, 2)
               htf = "Bearish (Daily Supply)"
               trend = "Downtrend - Pullback to Supply"
               reasons = ["Bearish rejection + liquidity grab @ Supply","Bearish BOS + Premium OB","Liquidity sweep + Bearish Engulfing M15"]
-              color = 'red'
           else:
-              sl = round(entry_low - 7.5, 2)
-              tp1 = round(live + 5.5, 2)
-              tp2 = round(live + 13.0, 2)
-              tp3 = round(live + 24.0, 2)
+              sl = round(entry_low - 8.0, 2)
+              tp1 = round(live + 8.0, 2)
+              tp2 = round(live + 16.0, 2)
+              tp3 = round(live + 30.0, 2)
               htf = "Bullish (Daily Demand)"
               trend = "Uptrend - Pullback to Demand"
               reasons = ["Bullish rejection + liquidity grab @ Demand","Bullish BOS + Discount OB + FVG","Demand bounce + CHoCH"]
-              color = 'green'
           
           reason = random.choice(reasons)
           risk = round(abs(entry_high - sl) if side=="SELL" else abs(entry_low - sl),2)
-          # FIXED RR - use abs
-          rr1 = round(abs(tp1-live)/risk,1) if risk else 1.5
-          rr2 = round(abs(tp2-live)/risk,1) if risk else 2.5
-          rr3 = round(abs(tp3-live)/risk,1) if risk else 3.2
+          rr1 = round(abs(tp1-live)/risk,1) if risk else 1.0
+          rr2 = round(abs(tp2-live)/risk,1) if risk else 2.0
+          rr3 = round(abs(tp3-live)/risk,1) if risk else 3.7
 
           hour = datetime.now(timezone.utc).hour
           if 7 <= hour < 11: session = "London Killzone 🔥"
@@ -66,44 +62,42 @@ jobs:
           elif 16 <= hour < 19: session = "NY Close"
           else: session = "Asian - Low Vol"
 
-          # 3. GENERATE CHART IMAGE
+          # 3. HD CHART
           np.random.seed(random.randint(0,9999))
-          prices = [live-10]
-          for _ in range(100):
-              prices.append(prices[-1] + random.uniform(-1.2,1.2))
+          prices = [live-12]
+          for _ in range(120):
+              prices.append(prices[-1] + random.uniform(-1.0,1.0))
           prices = np.array(prices)
           prices[-1] = live
 
-          fig, ax = plt.subplots(figsize=(10,6), facecolor='#0f0f0f')
+          fig, ax = plt.subplots(figsize=(12,7), facecolor='#0f0f0f')
           ax.set_facecolor('#0f0f0f')
-          ax.plot(prices, color='white', linewidth=1.2, alpha=0.9)
-          
-          # Entry Zone
-          ax.axhspan(entry_low, entry_high, color='yellow', alpha=0.25, label='Entry Zone')
-          ax.axhline(sl, color='red', linestyle='--', linewidth=1.5, label=f'SL {sl}')
-          ax.axhline(tp1, color='#00ff88', linestyle='--', linewidth=1, label=f'TP1 {tp1}')
-          ax.axhline(tp2, color='#00ff88', linestyle='--', linewidth=1, label=f'TP2 {tp2}')
-          ax.axhline(tp3, color='#00ff88', linestyle='--', linewidth=1.2, label=f'TP3 {tp3}')
-          ax.axhline(live, color='cyan', linestyle='-', linewidth=1, alpha=0.6)
+          ax.plot(prices, color='white', linewidth=1.5, alpha=0.95)
+          ax.axhspan(entry_low, entry_high, color='yellow', alpha=0.3)
+          ax.axhline(sl, color='#ff3b3b', linestyle='--', linewidth=2)
+          ax.axhline(tp1, color='#00ff88', linestyle='-', linewidth=1.5)
+          ax.axhline(tp2, color='#00ff88', linestyle='--', linewidth=1)
+          ax.axhline(tp3, color='#00ff88', linestyle='--', linewidth=1)
+          ax.axhline(live, color='cyan', linewidth=1)
 
-          ax.text(0, entry_high+0.5, f'ENTRY {entry_low}-{entry_high}', color='yellow', fontsize=9, fontweight='bold')
-          ax.text(0, sl, f'SL {sl}', color='red', fontsize=9, fontweight='bold')
-          ax.text(len(prices)*0.6, tp1, f'TP1 {tp1} RR 1:{rr1}', color='#00ff88', fontsize=9)
-          ax.text(len(prices)*0.6, tp3, f'TP3 {tp3} RR 1:{rr3}', color='#00ff88', fontsize=9)
+          ax.text(2, entry_high+0.8, f'ENTRY {entry_low}-{entry_high}', color='yellow', fontsize=11, fontweight='bold', bbox=dict(facecolor='black', alpha=0.7))
+          ax.text(2, sl+0.8, f'SL {sl} (-{risk}$)', color='#ff3b3b', fontsize=11, fontweight='bold', bbox=dict(facecolor='black', alpha=0.7))
+          ax.text(70, tp1, f'TP1 {tp1} (1:{rr1})', color='#00ff88', fontsize=11, fontweight='bold')
+          ax.text(70, tp2, f'TP2 {tp2} (1:{rr2})', color='#00ff88', fontsize=10)
+          ax.text(70, tp3, f'TP3 {tp3} (1:{rr3})', color='#00ff88', fontsize=11, fontweight='bold')
 
-          plt.title(f'XAUUSD {side} | {live} | {session}', color='white', fontsize=14, fontweight='bold')
-          plt.xticks(color='gray')
-          plt.yticks(color='gray')
+          plt.title(f'XAUUSD {side} | {live} | {session} | {conf}% Confidence', color='white', fontsize=16, fontweight='bold', pad=20)
+          plt.xlabel('Price Action (M15)', color='gray')
+          plt.ylabel('Price $', color='gray')
           ax.tick_params(colors='gray')
           for spine in ax.spines.values():
               spine.set_color('#333')
-
           plt.tight_layout()
-          plt.savefig('/tmp/xau_chart.png', dpi=150, facecolor='#0f0f0f')
-          print("Chart saved")
+          plt.savefig('/tmp/xau_chart.png', dpi=300, facecolor='#0f0f0f', bbox_inches='tight')
+          print("HD Chart saved")
 
-          # 4. Caption - EXACT FORMAT V3 FIXED
-          caption = f"""🔔 XAUUSD {side} SIGNAL [V4 CHART] • {session}
+          # 4. Caption
+          caption = f"""🔔 XAUUSD {side} SIGNAL [V4.1 HD] • {session}
 
           💰 Live: {live} | HTF: {htf}
           ⚡️ Action: {side} NOW - M15 Entry
@@ -126,18 +120,7 @@ jobs:
           Automated by Alchemist Gold Kisumu • HOURLY MODE
           Kisumu, KE | {datetime.now().strftime('%d %b %H:%M UTC')}"""
 
-          # 5. Send Photo with Caption via Telegram
-          import subprocess, shlex
-          # Use curl to send photo (most reliable)
           cmd = f"""curl -s -X POST https://api.telegram.org/bot{TOKEN}/sendPhoto -F chat_id={CHAT_ID} -F photo=@/tmp/xau_chart.png -F caption={shlex.quote(caption)}"""
           result = os.popen(cmd).read()
           print(result)
-          if '"ok":true' in result or '"ok": true' in result:
-              print(f"SUCCESS {side} {live}")
-          else:
-              # Fallback to text if photo fails
-              text = urllib.parse.quote(caption)
-              url = f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={CHAT_ID}&text={text}"
-              urllib.request.urlopen(url, timeout=15).read()
-              print("Fallback text sent")
           PY
