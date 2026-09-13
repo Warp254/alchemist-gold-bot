@@ -1,0 +1,16 @@
+name: Alchemist Gold Signal
+on:
+  schedule:
+    - cron: "0 */4 * * *"
+  workflow_dispatch:
+jobs:
+  send-signal:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send
+        run: |
+          TOKEN="8811197770:AAEoBPwAV3XnCy8H0F4Jnw9o9aj5L9lm-e0"
+          CHAT_ID="7991886223"
+          PRICE=$(curl -s https://api.coingecko.com/api/v3/simple/price?ids=pax-gold&vs_currencies=usd | python3 -c "import json,sys; print(json.load(sys.stdin)['pax-gold']['usd'])")
+          SIDE=$(python3 -c "import random; print(random.choice(['BUY','SELL']))")
+          curl -s "https://api.telegram.org/bot$TOKEN/sendMessage?chat_id=$CHAT_ID&text=🤖 Alchemist Gold $SIDE NOW Price $PRICE Time $(date)" > /dev/null
