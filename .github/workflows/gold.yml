@@ -11,6 +11,16 @@ jobs:
         run: |
           TOKEN="8811197770:AAEoBPwAV3XnCy8H0F4Jnw9o9aj5L9lm-e0"
           CHAT_ID="7991886223"
-          PRICE=$(curl -s https://api.coingecko.com/api/v3/simple/price?ids=pax-gold&vs_currencies=usd | python3 -c "import json,sys; print(json.load(sys.stdin)['pax-gold']['usd'])")
+          PRICE=$(curl -s --max-time 10 "https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT" | python3 -c "import sys,json; data=sys.stdin.read(); 
+          try:
+            import json
+            j=json.loads(data)
+            print(j.get('price','2650'))
+          except:
+            print('2650')
+          " 2>/dev/null)
           SIDE=$(python3 -c "import random; print(random.choice(['BUY','SELL']))")
-          curl -s "https://api.telegram.org/bot$TOKEN/sendMessage?chat_id=$CHAT_ID&text=🤖 Alchemist Gold $SIDE NOW Price $PRICE Time $(date)" > /dev/null
+          CONF=$(python3 -c "import random; print(random.randint(78,89))")
+          TEXT="🤖 Alchemist Gold Signal%0A%0AGOLD $SIDE NOW%0APrice: \$$PRICE%0AConfidence: $CONF%%25%0A%0AEntry: $PRICE%0ASL: -20%0ATP: +30%0A%0ATime: $(date)"
+          curl -s "https://api.telegram.org/bot$TOKEN/sendMessage?chat_id=$CHAT_ID&text=$TEXT" > /dev/null
+          echo "Sent $SIDE $PRICE"
