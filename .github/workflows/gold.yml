@@ -1,65 +1,64 @@
-name: Alchemist Gold V4.5 MSNR-CRT REAL
+name: Alchemist Gold TEST CHART
 on:
-  schedule:
-    - cron: "0 7-19 * * *"
   workflow_dispatch:
 jobs:
   send:
     runs-on: ubuntu-latest
     steps:
-      - name: MSNR-CRT REAL
+      - name: Force Test Signal
         run: |
           pip install matplotlib -q
           python3 << 'PY'
-          import json, urllib.request, os, shlex, sys
-          from datetime import datetime, timezone
+          import os, shlex
+          from datetime import datetime
           import matplotlib.pyplot as plt
+          import numpy as np
 
           TOKEN="8811197770:AAEoBPwAV3XnCy8H0F4Jnw9o9aj5L9lm-e0"
           CHAT="7991886223"
-          try:
-              url="https://api.binance.com/api/v3/klines?symbol=PAXGUSDT&interval=15m&limit=50"
-              klines=json.loads(urllib.request.urlopen(url, timeout=10).read())
-              highs=[float(k[2]) for k in klines]; lows=[float(k[3]) for k in klines]; closes=[float(k[4]) for k in klines]
-              live=closes[-1]
-              recent_high=max(highs[-20:-2]); recent_low=min(lows[-20:-2])
-              mid=(recent_high+recent_low)/2
-              swept_high = highs[-3] > recent_high and closes[-1] < recent_high
-              swept_low = lows[-3] < recent_low and closes[-1] > recent_low
-              body=abs(closes[-2]-float(klines[-2][1])); range_c=highs[-2]-lows[-2] or 1
-              strong_candle=body > range_c*0.6
-              bos_up=closes[-1] > highs[-2] and closes[-2] > highs[-3]
-              bos_down=closes[-1] < lows[-2] and closes[-2] < lows[-3]
 
-              side=None
-              if swept_low and bos_up and strong_candle:
-                  side="BUY"; htf=f"Bullish MSNR Demand {recent_low:.1f}"; trend="Sweep Low + BOS Up + CRT"; reason=f"Fresh Demand {recent_low:.1f}, Swept {min(lows[-5:]):.1f}, BOS Up"
-              elif swept_high and bos_down and strong_candle:
-                  side="SELL"; htf=f"Bearish MSNR Supply {recent_high:.1f}"; trend="Sweep High + BOS Down + CRT"; reason=f"Fresh Supply {recent_high:.1f}, Swept {max(highs[-5:]):.1f}, BOS Down"
+          # FAKE LIVE PRICE FOR TEST (tonight)
+          live=4345.78
+          recent_high=4358.20
+          recent_low=4336.50
+          side="BUY"
+          entry_low=round(live-1.0,2); entry_high=round(live+1.0,2)
+          sl=round(entry_low-3.5,2); tp1=round(live+5.25,2); tp2=round(live+8.75,2); tp3=round(live+14,2)
 
-              if not side:
-                  print(f"No A-Grade setup - Market closed or ranging. High {recent_high:.2f} Low {recent_low:.2f}")
-                  sys.exit(0)
+          closes=np.random.normal(live, 2, 40).tolist()
 
-              entry_low=round(live-1.0,2); entry_high=round(live+1.0,2)
-              if side=="SELL":
-                  sl=round(entry_high+3.5,2); tp1=round(live-5.25,2); tp2=round(live-8.75,2); tp3=round(live-14,2)
-              else:
-                  sl=round(entry_low-3.5,2); tp1=round(live+5.25,2); tp2=round(live+8.75,2); tp3=round(live+14,2)
-              hour=datetime.now(timezone.utc).hour
-              session="London Killzone" if 7 <= hour < 12 else "NY Killzone" if 12 <= hour < 17 else "Overlap"
+          fig, ax=plt.subplots(figsize=(12,7), facecolor='#0f0f0f'); ax.set_facecolor('#0f0f0f')
+          ax.plot(closes,color='white',linewidth=1.5)
+          ax.axhspan(entry_low, entry_high,color='yellow',alpha=0.35,label='ENTRY')
+          ax.axhline(recent_high,color='orange',linestyle=':',linewidth=1.5,alpha=0.8); ax.text(35,recent_high+0.5,f'SUPPLY {recent_high}',color='orange',fontsize=10)
+          ax.axhline(recent_low,color='cyan',linestyle=':',linewidth=1.5,alpha=0.8); ax.text(35,recent_low+0.5,f'DEMAND {recent_low}',color='cyan',fontsize=10)
+          ax.axhline(sl,color='#ff3b3b',linestyle='--',linewidth=2); ax.text(1,sl,f'SL {sl} (-$3.5)',color='#ff3b3b',weight='bold',bbox=dict(facecolor='black',alpha=0.6))
+          ax.axhline(tp1,color='#00ff88',linewidth=1.5); ax.text(30,tp1,f'TP1 {tp1} 1.5RR 50%',color='#00ff88',weight='bold')
+          ax.axhline(tp2,color='#00ff88',linestyle='--'); ax.text(30,tp2+0.3,f'TP2 {tp2} 2.5RR 30%',color='#00ff88')
+          ax.axhline(tp3,color='#00ff88',linestyle='--'); ax.text(30,tp3+0.3,f'TP3 {tp3} 4.0RR 20% Runner',color='#00ff88')
+          ax.text(1,entry_high+0.8,f'ENTRY {entry_low}-{entry_high}',color='yellow',weight='bold',bbox=dict(facecolor='black',alpha=0.6))
+          plt.title(f'XAUUSD {side} TEST | MSNR {recent_low} -> {recent_high} | Inducement Swept + BOS',color='white',fontsize=12,weight='bold',pad=20)
+          ax.tick_params(colors='gray')
+          for s in ax.spines.values(): s.set_color('#333')
+          plt.tight_layout(); plt.savefig('/tmp/xau_chart.png',dpi=300,facecolor='#0f0f0f',bbox_inches='tight')
 
-              fig, ax=plt.subplots(figsize=(12,7), facecolor='#0f0f0f'); ax.set_facecolor('#0f0f0f')
-              ax.plot(closes[-40:],color='white',linewidth=1.5)
-              ax.axhspan(entry_low, entry_high,color='yellow',alpha=0.3)
-              ax.axhline(sl,color='#ff3b3b',linestyle='--',linewidth=2)
-              ax.axhline(tp1,color='#00ff88'); ax.axhline(tp2,color='#00ff88',linestyle='--'); ax.axhline(tp3,color='#00ff88',linestyle='--')
-              plt.title(f'XAUUSD {side} | {htf} | {session}',color='white',fontsize=12,weight='bold')
-              plt.tight_layout(); plt.savefig('/tmp/xau_chart.png',dpi=200,facecolor='#0f0f0f')
+          caption=f"""🔔 XAUUSD {side} SIGNAL [V4.5 TEST - MSNR REAL LOOK]
 
-              caption=f"🔔 XAUUSD {side} [V4.5.1 MSNR REAL] {session} Live {live:.2f} Entry {entry_low}-{entry_high} SL {sl} TP1 {tp1} TP2 {tp2} TP3 {tp3} Reason {reason} Kisumu {datetime.now().strftime('%H:%M UTC')}"
-              cmd=f"curl -s -X POST https://api.telegram.org/bot{TOKEN}/sendPhoto -F chat_id={CHAT} -F photo=@/tmp/xau_chart.png -F caption={shlex.quote(caption)}"
-              print(os.popen(cmd).read())
-          except Exception as e:
-              print(f"ERROR: {e}"); sys.exit(0)
+          💰 Live: {live} | HTF: Bullish MSNR Demand {recent_low}
+          📈 Context: Sweep Low 4335.2 + BOS Up + CRT Strong Bullish
+
+          📍 Entry: {entry_low} - {entry_high}
+          🛑 SL: {sl} ($3.5) | 1% Risk
+          🎯 TP1: {tp1} (1.5 RR - 50%)
+          🎯 TP2: {tp2} (2.5 RR - 30%)
+          🎯 TP3: {tp3} (4.0 RR - 20% Runner)
+
+          📊 Confidence: 89% (Real MSNR Logic)
+          💡 Reason: Fresh Demand {recent_low}, Inducement Swept 4335.2, BOS Up, CRT Bull Body 65%
+
+          ✅ This is how REAL signals will look Monday London!
+          Test Chart - Kisumu {datetime.now().strftime('%H:%M UTC')}"""
+
+          cmd=f"curl -s -X POST https://api.telegram.org/bot{TOKEN}/sendPhoto -F chat_id={CHAT} -F photo=@/tmp/xau_chart.png -F caption={shlex.quote(caption)}"
+          print(os.popen(cmd).read())
           PY
