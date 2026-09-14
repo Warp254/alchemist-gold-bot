@@ -5,120 +5,104 @@ import numpy as np
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-if not TOKEN or not CHAT_ID:
-    print("Missing secrets"); sys.exit(1)
 
-# --- REAL GOLD PRICE - 451 PROOF ---
-def get_gold_data():
-    # Try CoinGecko PAXG (Gold peg) - works on GitHub
+def tg_send(text, photo=None):
     try:
-        url = "https://api.coingecko.com/api/v3/coins/pax-gold/market_chart?vs_currency=usd&days=3"
-        raw = json.loads(urllib.request.urlopen(url, timeout=15).read())
-        prices = [p[1] for p in raw['prices']] # every ~5min
-        # downsample to 15m = 3 points
-        closes = prices[::3][-200:]
-        return np.array(closes), float(closes[-1])
+        if photo:
+            cmd = f"curl -s -X POST https://api.telegram.org/bot{TOKEN}/sendPhoto -F chat_id={CHAT_ID} -F photo=@{photo} -F caption={shlex.quote(text)}"
+        else:
+            cmd = f"curl -s -X POST https://api.telegram.org/bot{TOKEN}/sendMessage -d chat_id={CHAT_ID} -d text={shlex.quote(text)}"
+        os.system(cmd + " > /tmp/out.txt; cat /tmp/out.txt")
+        print(f"TG sent")
     except Exception as e:
-        print(f"Coingecko fail {e}, using GoldAPI")
-        # Fallback live only
-        url2 = "https://api.gold-api.com/price/XAU"
-        raw2 = json.loads(urllib.request.urlopen(url2, timeout=10).read())
-        live = float(raw2['price'])
-        # fake history around live for levels (still real price)
-        fake = np.array([live + np.sin(i/10)*2 for i in range(200)])
-        fake[-1]=live
-        return fake, live
+        print(f"TG fail {e}")
 
-closes, live = get_gold_data()
-# build highs/lows from closes for QML logic
+def get_gold():
+    url = "https://api.coingecko.com/api/v3/coins/pax-gold/market_chart?vs_currency=usd&days=3"
+    raw = json.loads(urllib.request.urlopen(url, timeout=15).read())
+    prices = [p[1] for p in raw['prices']]
+    closes = prices[::3][-200:]
+    return np.array(closes), float(closes[-1])
+
+closes, live = get_gold()
 highs = closes + 0.6
 lows = closes - 0.6
-print(f"Live Gold {live}")
-
-# --- ALCHEMIST LOGIC (same as MT5) ---
-KILLZONES = {"london":(7,10),"ny_am":(12,15),"ny_pm":(18,20)}
 hour_utc = datetime.now(timezone.utc).hour
-kz_now = None
-for n,(s,e) in KILLZONES.items():
-    if s <= hour_utc < e: kz_now=n
 
-def detect_msnr():
-    levels=[]
-    for i in range(50, len(closes)-3):
-        if lows[i-1] > lows[i] < lows[i+1] and lows[i]==np.min(lows[i-2:i+3]):
-            if np.min(lows[i+1:]) >= lows[i]:
-                levels.append({"type":"SUPPORT_V_QML","price":float(lows[i]),"idx":i,"fresh":True,"strength":abs(lows[i-1]-lows[i])})
-        if highs[i-1] < highs[i] > highs[i+1] and highs[i]==np.max(highs[i-2:i+3]):
-            if np.max(highs[i+1:]) <= highs[i]:
-                levels.append({"type":"RESISTANCE_A_QML","price":float(highs[i]),"idx":i,"fresh":True,"strength":abs(highs[i]-highs[i-1])})
-    return sorted(levels, key=lambda x: x['strength'], reverse=True)[:5]
+# QML detect
+levels=[]
+for i in range(50, len(closes)-3):
+    if lows[i-1] > lows[i] < lows[i+1] and lows[i]==np.min(lows[i-2:i+3]):
+        if np.min(lows[i+1:]) >= lows[i]:
+            levels.append({"type":"SUPPORT_V_QML","price":float(lows[i]),"strength":abs(lows[i-1]-lows[i])})
+    if highs[i-1] < highs[i] > highs[i+1] and highs[i]==np.max(highs[i-2:i+3]):
+        if np.max(highs[i+1:]) <= highs[i]:
+            levels.append({"type":"RESISTANCE_A_QML","price":float(highs[i]),"strength":abs(highs[i]-highs[i-1])})
 
-levels = detect_msnr()
+levels = sorted(levels, key=lambda x: x['strength'], reverse=True)[:5]
 if not levels:
-    print("No levels"); sys.exit(0)
-
-nearest = min(levels, key=lambda x: abs(x['price']-live))
-if abs(nearest['price']-live) > 4.0:
-    print(f"Too far {abs(live-nearest['price'])}")
-    # still send scan so you know bot alive
-    cap = f"🔍 ALCHEMIST SCAN [V6.1 REAL]\nLive {live:.2f} | Nearest {nearest['type']} {nearest['price']:.2f}\nDist {abs(live-nearest['price']):.2f}$ > 4$ - Waiting for price to come to QML\nKZ: {kz_now} | Kisumu {datetime.now().strftime('%H:%M')}"
-    os.system(f"curl -s -X POST https://api.telegram.org/bot{TOKEN}/sendMessage -d chat_id={CHAT_ID} -d text={shlex.quote(cap)} > /dev/null")
+    tg_send(f"🔍 ALCHEMIST SCAN\nLive {live:.2f}\nNo fresh QML levels - market ranging\nKisumu {datetime.now().strftime('%H:%M')}")
     sys.exit(0)
 
+nearest = min(levels, key=lambda x: abs(x['price']-live))
+dist = abs(live-nearest['price'])
 direction = "BUY" if "SUPPORT" in nearest['type'] else "SELL"
 
 # CRT
 crt_high = highs[-4]; crt_low = lows[-4]; mid=(crt_high+crt_low)/2
 crt = "BUY" if lows[-1] < crt_low and closes[-1] > mid else "SELL" if highs[-1] > crt_high and closes[-1] < mid else None
-if crt!= direction:
-    print(f"CRT mismatch {crt} vs {direction}"); sys.exit(0)
 
-# Inducement
 recent_range = np.max(highs[-30:]) - np.min(lows[-30:])
 last5_range = np.max(highs[-5:]) - np.min(lows[-5:])
 inducement = last5_range < recent_range*0.35
 
 score=0
-if kz_now in ["london","ny_am"]: score+=4
-elif kz_now: score+=2
+if 7 <= hour_utc < 15: score+=4
 if inducement: score+=3
-if nearest['fresh']: score+=3
-if abs(live-nearest['price'])<1.5: score+=2
+if abs(dist)<1.5: score+=2
+if nearest: score+=3
+
+# --- ALWAYS BUILD CHART ---
+fig, ax = plt.subplots(figsize=(10,6), facecolor='#0e0e0e')
+ax.set_facecolor('#0e0e0e')
+ax.plot(closes[-80:], color='white', lw=1.2)
+for lv in levels:
+    col = '#00ff88' if 'SUPPORT' in lv['type'] else '#ff4444'
+    ax.axhline(lv['price'], color=col, ls=':', alpha=0.6)
+ax.axhline(live, color='yellow', lw=1.5, label=f"Live {live:.2f}")
+plt.title(f'ALCHEMIST SCAN {live:.2f} | {nearest["type"]} | Score {score}/12', color='white', fontsize=9)
+plt.legend(facecolor='#0e0e0e', edgecolor='white', labelcolor='white', fontsize=7)
+plt.savefig('/tmp/chart.png', dpi=200, facecolor='#0e0e0e', bbox_inches='tight')
+plt.close()
+
+# --- DECISION ---
+if dist > 4.0:
+    tg_send(f"🔍 ALCHEMIST SCAN [REAL]\nLive {live:.2f} | Nearest {nearest['type']} {nearest['price']:.2f}\nDist {dist:.2f}$ - Waiting for price to tap QML\nCRT: {crt} | IDM: {inducement} | Score {score}/12\nKisumu {datetime.now().strftime('%H:%M')} - Next scan 1h", photo="/tmp/chart.png")
+    sys.exit(0)
+
+if crt!= direction:
+    tg_send(f"🔍 ALCHEMIST SCAN [REAL]\nLive {live:.2f} | QML {nearest['type']} {nearest['price']:.2f}\nCRT mismatch: need {direction} got {crt} - Waiting for sweep\nScore {score}/12 | Kisumu {datetime.now().strftime('%H:%M')}", photo="/tmp/chart.png")
+    sys.exit(0)
 
 if score < 8:
-    print(f"Score {score} <8 skip"); sys.exit(0)
+    tg_send(f"🔍 ALCHEMIST SCAN [REAL]\nLive {live:.2f} | {nearest['type']} {nearest['price']:.2f}\nScore {score}/12 B-GRADE - Need 8/12 A-GRADE\nCRT: {crt} IDM: {inducement} Dist: {dist:.2f}$\nWaiting for better confluence\nKisumu {datetime.now().strftime('%H:%M')}", photo="/tmp/chart.png")
+    sys.exit(0)
 
-# SL/TP
+# A-GRADE ENTRY
 atr = np.mean(highs[-14:]-lows[-14:])
 sl_dist = max(1.0, min(3.5, atr*0.8))
 entry = nearest['price']
 sl = entry - sl_dist if direction=="BUY" else entry + sl_dist
 tps = [entry + sl_dist*rr if direction=="BUY" else entry - sl_dist*rr for rr in [1.5,2.5,4.0]]
 
-# Chart
-fig, ax = plt.subplots(figsize=(10,6), facecolor='#0e0e0e')
-ax.set_facecolor('#0e0e0e')
-ax.plot(closes[-80:], color='white', lw=1.2)
-for lv in levels:
-    col = '#00ff88' if 'SUPPORT' in lv['type'] else '#ff4444'
-    ax.axhline(lv['price'], color=col, ls=':', alpha=0.6, lw=0.8)
-ax.axhline(entry, color='yellow', lw=1.5)
-ax.axhline(sl, color='red', ls='--')
-ax.axhline(tps[0], color='#00ff88', ls='--')
-plt.title(f'ALCHEMIST REAL {direction} {live:.2f} | {nearest["type"]} | SCORE {score}/12 | KZ {kz_now}', color='white', fontsize=9, fontweight='bold')
-plt.savefig('/tmp/chart.png', dpi=200, facecolor='#0e0e0e', bbox_inches='tight')
-plt.close()
-
-kisumu = datetime.now().strftime('%H:%M')
-caption = f"""🪙 ALCHEMIST XAU {direction} [V6.1 REAL] • {kz_now or 'OUTSIDE'} 🔥
+caption = f"""🪙 ALCHEMIST XAU {direction} [V6.2 REAL] 🔥
 {nearest['type']} @ {entry:.2f} | Score {score}/12 A-GRADE
-CRT Sweep OK | IDM {'YES' if inducement else 'NO'}
 
 💰 Live: {live:.2f}
-⚡️ Action: {direction} NOW
 📍 Entry: {entry-0.3:.2f} - {entry+0.3:.2f}
 🛑 SL: {sl:.2f} (${sl_dist:.2f})
 🎯 TP1: {tps[0]:.2f} (50%) | TP2: {tps[1]:.2f} (30%) | TP3: {tps[2]:.2f} (20%)
-Kisumu {kisumu} | Real Gold API"""
+CRT: {crt} | IDM: {'YES' if inducement else 'NO'}
+Kisumu {datetime.now().strftime('%H:%M')}"""
 
-os.system(f"curl -s -X POST https://api.telegram.org/bot{TOKEN}/sendPhoto -F chat_id={CHAT_ID} -F photo=@/tmp/chart.png -F caption={shlex.quote(caption)} > /tmp/out.txt && cat /tmp/out.txt")
+tg_send(caption, photo="/tmp/chart.png")
