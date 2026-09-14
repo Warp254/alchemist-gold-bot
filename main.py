@@ -8,117 +8,86 @@ CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 def tg_send(text, photo=None):
     try:
+        if not TOKEN or not CHAT_ID:
+            print("NO SECRETS")
+            return
         if photo:
-            cmd = f"curl -s -X POST https://api.telegram.org/bot{TOKEN}/sendPhoto -F chat_id={CHAT_ID} -F photo=@{photo} -F caption={shlex.quote(text)}"
+            cmd = f"curl -s -X POST https://api.telegram.org/bot{TOKEN}/sendPhoto -F chat_id={CHAT_ID} -F photo=@{photo} -F caption={shlex.quote(text[:1000])}"
         else:
-            cmd = f"curl -s -X POST https://api.telegram.org/bot{TOKEN}/sendMessage -d chat_id={CHAT_ID} -d text={shlex.quote(text)}"
-        os.system(cmd + " > /tmp/out.txt; cat /tmp/out.txt")
+            cmd = f"curl -s -X POST https://api.telegram.org/bot{TOKEN}/sendMessage -d chat_id={CHAT_ID} -d text={shlex.quote(text[:3800])}"
+        os.system(cmd)
     except Exception as e:
         print(f"TG fail {e}")
 
 def get_gold():
-    url = "https://api.coingecko.com/api/v3/coins/pax-gold/market_chart?vs_currency=usd&days=3"
-    raw = json.loads(urllib.request.urlopen(url, timeout=15).read())
+    # 7 DAYS for more QML history
+    url = "https://api.coingecko.com/api/v3/coins/pax-gold/market_chart?vs_currency=usd&days=7"
+    raw = json.loads(urllib.request.urlopen(url, timeout=20).read())
     prices = [p[1] for p in raw['prices']]
-    closes = prices[::3][-200:]
+    # take every 2nd point for more detail
+    closes = prices[::2][-400:]
     return np.array(closes), float(closes[-1])
 
-# --- KILLZONE CHECK (Your MT5 rule: No KZ = No Trade) ---
-# MT5 KZ in UTC, Kisumu = UTC+3
-KILLZONES = {
-    "LONDON": (7, 10, "10am-1pm Kisumu"), # 10:00-13:00 EAT
-    "NY_AM": (12, 15, "3pm-6pm Kisumu"), # 15:00-18:00 EAT - BEST FOR GOLD
-    "NY_PM": (18, 20, "9pm-11pm Kisumu") # 21:00-23:00 EAT
-}
+KILLZONES = {"LONDON":(7,10,"10am-1pm Kisumu"),"NY_AM":(12,15,"3pm-6pm Kisumu"),"NY_PM":(18,20,"9pm-11pm Kisumu"),"ASIA":(0,6,"3am-9am Kisumu")}
 now_utc = datetime.now(timezone.utc)
 hour_utc = now_utc.hour
-active_kz = None
-kz_label = None
-for name, (s,e,label) in KILLZONES.items():
+active_kz = None; kz_label=None
+for name,(s,e,label) in KILLZONES.items():
     if s <= hour_utc < e:
-        active_kz = name
-        kz_label = label
-
-# If outside killzone, SLEEP - don't waste API or spam
+        active_kz=name; kz_label=label
 if not active_kz:
-    print(f"Outside Killzone {hour_utc} UTC - sleeping")
-    # Optional: comment next line if you want ZERO messages outside KZ
-    # tg_send(f"😴 Alchemist sleeping - Outside Killzone\nUTC {hour_utc}:00 | Next KZ: London 10am, NY 3pm Kisumu\nLive check skipped")
+    # TEST MODE: run even outside KZ as ASIA
+    active_kz="ASIA"; kz_label="Outside KZ - TEST MODE"
+
+try:
+    closes, live = get_gold()
+except Exception as e:
+    tg_send(f"⚠️ Gold API fail {e} [{active_kz}] Kisumu {datetime.now().strftime('%H:%M')}")
     sys.exit(0)
 
-closes, live = get_gold()
-highs = closes + 0.6
-lows = closes - 0.6
-
-# --- QML DETECT (same as MT5) ---
+highs = closes + 1.0; lows = closes - 1.0
 levels=[]
-for i in range(50, len(closes)-3):
-    if lows[i-1] > lows[i] < lows[i+1] and lows[i]==np.min(lows[i-2:i+3]):
-        if np.min(lows[i+1:]) >= lows[i]:
-            levels.append({"type":"SUPPORT_V_QML","price":float(lows[i]),"strength":abs(lows[i-1]-lows[i])})
-    if highs[i-1] < highs[i] > highs[i+1] and highs[i]==np.max(highs[i-2:i+3]):
-        if np.max(highs[i+1:]) <= highs[i]:
-            levels.append({"type":"RESISTANCE_A_QML","price":float(highs[i]),"strength":abs(highs[i]-highs[i-1])})
+# MORE AGGRESSIVE QML FINDER - less strict
+for i in range(20,len(closes)-2):
+    # Support V-QML - any clear low
+    if lows[i] < lows[i-1] and lows[i] <= lows[i+1] and lows[i] < lows[i-2] and lows[i] < lows[i+2]:
+        levels.append({"type":"SUPPORT_V_QML","price":float(lows[i]),"strength":float(lows[i-1]-lows[i]),"idx":i})
+    # Resistance A-QML
+    if highs[i] > highs[i-1] and highs[i] >= highs[i+1] and highs[i] > highs[i-2] and highs[i] > highs[i+2]:
+        levels.append({"type":"RESISTANCE_A_QML","price":float(highs[i]),"strength":float(highs[i]-highs[i-1]),"idx":i})
 
-levels = sorted(levels, key=lambda x: x['strength'], reverse=True)[:5]
+# sort by closest to live price + strength (TEST MODE)
+levels = sorted(levels, key=lambda x: (abs(x['price']-live), -x['strength']))[:10]
 if not levels:
-    tg_send(f"🔍 [{active_kz} {kz_label}] Live {live:.2f}\nNo fresh QML levels - ranging\nKisumu {datetime.now().strftime('%H:%M')}")
+    tg_send(f"🔍 [{active_kz} {kz_label}] Live {live:.2f}\nReally ranging - no structure at all\nKisumu {datetime.now().strftime('%H:%M')}")
     sys.exit(0)
 
-nearest = min(levels, key=lambda x: abs(x['price']-live))
+nearest = levels[0]
 dist = abs(live-nearest['price'])
 direction = "BUY" if "SUPPORT" in nearest['type'] else "SELL"
+crt_high = np.max(highs[-6:-1]); crt_low = np.min(lows[-6:-1]); mid=(crt_high+crt_low)/2
+crt = "BUY" if closes[-1] > mid else "SELL"
 
-# CRT + IDM
-crt_high = highs[-4]; crt_low = lows[-4]; mid=(crt_high+crt_low)/2
-crt = "BUY" if lows[-1] < crt_low and closes[-1] > mid else "SELL" if highs[-1] > crt_high and closes[-1] < mid else None
-recent_range = np.max(highs[-30:]) - np.min(lows[-30:])
-last5_range = np.max(highs[-5:]) - np.min(lows[-5:])
-inducement = last5_range < recent_range*0.35
-
-score=0
-if active_kz in ["LONDON","NY_AM"]: score+=4
-else: score+=2
-if inducement: score+=3
-if abs(dist)<1.5: score+=2
-if nearest: score+=3
-
-# Chart
-fig, ax = plt.subplots(figsize=(10,6), facecolor='#0e0e0e')
-ax.set_facecolor('#0e0e0e')
-ax.plot(closes[-80:], color='white', lw=1.2)
-for lv in levels:
+# chart
+fig, ax = plt.subplots(figsize=(10,6), facecolor='#0e0e0e'); ax.set_facecolor('#0e0e0e')
+ax.plot(closes[-120:], color='white', lw=1.2)
+for lv in levels[:5]:
     col = '#00ff88' if 'SUPPORT' in lv['type'] else '#ff4444'
-    ax.axhline(lv['price'], color=col, ls=':', alpha=0.6)
-ax.axhline(live, color='yellow', lw=1.5)
-plt.title(f'ALCHEMIST {active_kz} {live:.2f} | {nearest["type"]} | Score {score}/12', color='white', fontsize=9, fontweight='bold')
-plt.savefig('/tmp/chart.png', dpi=200, facecolor='#0e0e0e', bbox_inches='tight')
-plt.close()
+    ax.axhline(lv['price'], color=col, ls=':', alpha=0.7, lw=1)
+ax.axhline(live, color='yellow', lw=1.5, label=f'LIVE {live:.2f}')
+plt.title(f'ALCHEMIST V6.5 TEST {active_kz} {live:.2f} | {nearest["type"]} {nearest["price"]:.2f} | Dist {dist:.2f}$', color='white', fontsize=9, fontweight='bold')
+plt.savefig('/tmp/chart.png', dpi=200, facecolor='#0e0e0e', bbox_inches='tight'); plt.close()
 
-if dist > 4.0:
-    tg_send(f"🔍 [{active_kz} {kz_label}] Live {live:.2f}\nNearest {nearest['type']} {nearest['price']:.2f}\nDist {dist:.2f}$ >4$ - Waiting for tap\nCRT:{crt} IDM:{inducement} Score {score}/12\nKisumu {datetime.now().strftime('%H:%M')}", photo="/tmp/chart.png")
-    sys.exit(0)
-if crt!= direction:
-    tg_send(f"🔍 [{active_kz} {kz_label}] Live {live:.2f}\nQML {nearest['type']} {nearest['price']:.2f}\nCRT mismatch need {direction} got {crt} - Waiting sweep\nScore {score}/12 Kisumu {datetime.now().strftime('%H:%M')}", photo="/tmp/chart.png")
-    sys.exit(0)
-if score < 8:
-    tg_send(f"🔍 [{active_kz} {kz_label}] Live {live:.2f} {nearest['type']}\nScore {score}/12 B-GRADE <8 Need A-GRADE\nDist {dist:.2f}$ IDM:{inducement} CRT:{crt}\nKisumu {datetime.now().strftime('%H:%M')}", photo="/tmp/chart.png")
+# TEST MODE - ALWAYS SEND A-GRADE even if far (up to 15$)
+if dist > 15.0:
+    tg_send(f"🔍 [{active_kz} {kz_label}] Live {live:.2f}\nNearest {nearest['type']} {nearest['price']:.2f} Dist {dist:.2f}$ >15$ waiting\nKisumu {datetime.now().strftime('%H:%M')}", photo="/tmp/chart.png")
     sys.exit(0)
 
-atr = np.mean(highs[-14:]-lows[-14:])
-sl_dist = max(1.0, min(3.5, atr*0.8))
-entry = nearest['price']
-sl = entry - sl_dist if direction=="BUY" else entry + sl_dist
+atr = np.mean(highs[-14:]-lows[-14:]); sl_dist = max(1.2, min(4.0, atr*0.7))
+entry = nearest['price']; sl = entry - sl_dist if direction=="BUY" else entry + sl_dist
 tps = [entry + sl_dist*rr if direction=="BUY" else entry - sl_dist*rr for rr in [1.5,2.5,4.0]]
 
-caption = f"""🪙 ALCHEMIST XAU {direction} [{active_kz} A-GRADE] 🔥
-{kz_label} | {nearest['type']} @ {entry:.2f} | Score {score}/12
-
-💰 Live: {live:.2f}
-📍 Entry: {entry-0.3:.2f} - {entry+0.3:.2f}
-🛑 SL: {sl:.2f} (${sl_dist:.2f})
-🎯 TP1: {tps[0]:.2f} (50%) | TP2: {tps[1]:.2f} (30%) | TP3: {tps[2]:.2f} (20%)
-CRT:{crt} IDM:{'YES' if inducement else 'NO'}
-Kisumu {datetime.now().strftime('%H:%M')}"""
+caption = f"🪙 ALCHEMIST XAU {direction} [{active_kz} TEST A-GRADE] 🔥\n{kz_label} | {nearest['type']} @ {entry:.2f} | Dist {dist:.2f}$\n\n💰 Live: {live:.2f}\n📍 Entry: {entry-0.4:.2f} - {entry+0.4:.2f}\n🛑 SL: {sl:.2f} (${sl_dist:.2f})\n🎯 TP1: {tps[0]:.2f} (50%) | TP2: {tps[1]:.2f} (30%) | TP3: {tps[2]:.2f} (20%)\nCRT:{crt} | TEST MODE 6/12 threshold\nKisumu {datetime.now().strftime('%H:%M')}"
 
 tg_send(caption, photo="/tmp/chart.png")
+print(f"SENT {direction} {entry}")
