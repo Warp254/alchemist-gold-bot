@@ -9,112 +9,13 @@ jobs:
   send:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
-      - name: Install deps
-        run: pip install -r requirements.txt
-
+      - run: pip install matplotlib requests -q
       - name: Run Bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python main.py
-        import json, random, urllib.request, os, shlex
-from datetime import datetime, timezone
-import matplotlib.pyplot as plt
-import numpy as np
-
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
-# 1. Live Price
-try:
-    data = urllib.request.urlopen("https://api.binance.com/api/v3/ticker/price?symbol=PAXGUSDT", timeout=10).read()
-    live = float(json.loads(data).get("price","4305.0"))
-except:
-    live = 4305.0
-live = round(live,2)
-
-# 2. YOUR STRICT FILTER (real logic)
-# Simulate your MSNR check - replace with real later
-hour = datetime.now(timezone.utc).hour
-is_killzone = 7 <= hour <= 19  # 10am-10pm Kisumu
-trend = "BEAR"  # From your MT5 screenshot
-has_msnr = False  # Set False to mimic now - no fresh supply
-# When you have real supply: set to True when A-Grade found
-
-if not is_killzone or not has_msnr:
-    # SEND HEARTBEAT so you know it's ALIVE (this is what you wanted!)
-    msg = f"""🔍 Alchemist SCAN [STRICT]
-
-💰 Live: {live} | Trend: {trend} BEAR
-⏰ {datetime.now().strftime('%H:%M Kisumu')} | KZ: {'YES' if is_killzone else 'NO'}
-
-❌ No A-Grade found
-Reason: No Fresh Supply + No Sweep yet
-Next check: Next hour
-
-Bot is alive and watching Gold.
-"""
-    cmd = f"curl -s -X POST https://api.telegram.org/bot{TOKEN}/sendMessage -d chat_id={CHAT_ID} -d text={shlex.quote(msg)}"
-    os.system(cmd)
-    print("Heartbeat sent - No A-Grade")
-    exit()
-
-# 3. IF A-GRADE FOUND -> Send YOUR pro chart format
-side = "SELL" if trend == "BEAR" else "BUY"
-conf = 89
-entry_low = round(live - 0.8,2)
-entry_high = round(live + 0.8,2)
-sl = round(entry_high + 7.5,2) if side=="SELL" else round(entry_low - 7.5,2)
-tp1 = round(live - 7.5,2) if side=="SELL" else round(live + 7.5,2)
-tp2 = round(live - 15,2) if side=="SELL" else round(live + 15,2)
-tp3 = round(live - 28,2) if side=="SELL" else round(live + 28,2)
-risk = abs(entry_high - sl)
-rr1, rr2, rr3 = round(abs(tp1-live)/risk,1), round(abs(tp2-live)/risk,1), round(abs(tp3-live)/risk,1)
-
-# Chart
-prices = [live-10]
-for _ in range(100): prices.append(prices[-1] + random.uniform(-1.2,1.2))
-prices[-1]=live
-fig, ax = plt.subplots(figsize=(10,6), facecolor='#0f0f0f')
-ax.set_facecolor('#0f0f0f')
-ax.plot(prices, color='white', linewidth=1.2)
-ax.axhspan(entry_low, entry_high, color='yellow', alpha=0.25)
-ax.axhline(sl, color='red', linestyle='--')
-ax.axhline(tp1, color='#00ff88', linestyle='--')
-ax.axhline(tp3, color='#00ff88', linestyle='--')
-plt.title(f'XAUUSD {side} {live} | A-GRADE 89%', color='white', fontweight='bold')
-plt.savefig('/tmp/xau_chart.png', dpi=200, facecolor='#0f0f0f', bbox_inches='tight')
-
-caption = f"""🔔 XAUUSD {side} SIGNAL [V4.5 STRICT] • London Killzone 🔥
-
-💰 Live: {live} | HTF: Bearish (Daily Supply)
-⚡️ Action: {side} NOW - M15 A-GRADE
-📈 Context: Downtrend - Sweep + BOS
-
-📍 Entry: {entry_low} - {entry_high}
-🛑 SL: {sl} ({risk}$) | Lot: 0.03 (2% Risk)
-🎯 TP1: {tp1} (RR 1:{rr1}) - Close 50%
-🎯 TP2: {tp2} (RR 1:{rr2}) - Move SL to BE
-🎯 TP3: {tp3} (RR 1:{rr3}) - Runner
-
-📊 Confidence: {conf}% | RR Total: 1:{rr3}
-💡 Reason: Fresh Supply + Sweep + BOS + Bearish Engulfing
-
-⏰ Session: London Killzone
-⏳ Valid: 90 Min Only
-📌 Plan: BE at TP1, Trail at TP2
-
-Kisumu, KE | {datetime.now().strftime('%d %b %H:%M')}
-"""
-
-cmd = f"""curl -s -X POST https://api.telegram.org/bot{TOKEN}/sendPhoto -F chat_id={CHAT_ID} -F photo=@/tmp/xau_chart.png -F caption={shlex.quote(caption)}"""
-os.system(cmd)
-print(f"SIGNAL SENT {side} {live}")
