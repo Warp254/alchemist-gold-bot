@@ -68,7 +68,7 @@ for i in range(20,len(closes)-2):
     if highs[i] > highs[i-1] and highs[i] >= highs[i+1] and highs[i] > highs[i-2] and highs[i] > highs[i+2]:
         levels.append({"type":"RESISTANCE_A_QML","price":float(highs[i]),"strength":float(highs[i]-highs[i-1]),"idx":i})
 
-levels = sorted(levels, key=lambda x: (abs(x['price']-live), -x['strength']))[:10]
+levels = sorted(levels, key=lambda x: (abs(x['price']-live), -x['strength']))[:15]
 if not levels:
     tg_send(f"🔍 [{active_kz} {kz_label}] Live {live:.2f}\nNo fresh QML - ranging\nKisumu {kisumu_str}")
     sys.exit(0)
@@ -90,11 +90,11 @@ score += 2
 
 fig, ax = plt.subplots(figsize=(10,6), facecolor='#0e0e0e'); ax.set_facecolor('#0e0e0e')
 ax.plot(closes[-120:], color='white', lw=1.2)
-for lv in levels[:5]:
+for lv in levels[:6]:
     col = '#00ff88' if 'SUPPORT' in lv['type'] else '#ff4444'
-    ax.axhline(lv['price'], color=col, ls=':', alpha=0.7)
+    ax.axhline(lv['price'], color=col, ls=':', alpha=0.7, lw=0.8)
 ax.axhline(live, color='yellow', lw=1.5)
-plt.title(f'ALCHEMIST V6.5 STRICT {active_kz} {live:.2f} | {nearest["type"]} {nearest["price"]:.2f} | {score}/12', color='white', fontsize=9, fontweight='bold')
+plt.title(f'ALCHEMIST V6.5 SWING {active_kz} {live:.2f} | {nearest["type"]} {nearest["price"]:.2f} | {score}/12', color='white', fontsize=9, fontweight='bold')
 plt.savefig('/tmp/chart.png', dpi=200, facecolor='#0e0e0e', bbox_inches='tight'); plt.close()
 
 if dist > 4.0:
@@ -105,10 +105,39 @@ if score < 8:
     tg_send(f"🔍 [{active_kz} {kz_label}] Live {live:.2f}\n{nearest['type']} {nearest['price']:.2f} Score {score}/12 <8 - filtered\nKisumu {kisumu_str}", photo="/tmp/chart.png")
     sys.exit(0)
 
-atr = np.mean(highs[-14:]-lows[-14:]); sl_dist = max(1.2, min(4.0, atr*0.7))
-entry = nearest['price']; sl = entry - sl_dist if direction=="BUY" else entry + sl_dist
-tps = [entry + sl_dist*rr if direction=="BUY" else entry - sl_dist*rr for rr in [1.5,2.5,4.0]]
+# SWING SL
+atr = np.mean(highs[-14:]-lows[-14:])
+sl_dist = max(2.8, min(7.0, atr*1.5))
+entry = nearest['price']
+sl = entry - sl_dist if direction=="BUY" else entry + sl_dist
 
-caption = f"🪙 ALCHEMIST XAU {direction} [{active_kz} STRICT A-GRADE {score}/12] 🔥\n{kz_label} | {nearest['type']} @ {entry:.2f} | Dist {dist:.2f}$\n\n💰 Live: {live:.2f}\n📍 Entry: {entry-0.4:.2f} - {entry+0.4:.2f}\n🛑 SL: {sl:.2f} (${sl_dist:.2f})\n🎯 TP1: {tps[0]:.2f} (50%) | TP2: {tps[1]:.2f} (30%) | TP3: {tps[2]:.2f} (20%)\nCRT:{crt} | V6.5 STRICT REAL XAU\nKisumu {kisumu_str}"
+# DYNAMIC STRUCTURE TPS - REAL ICT
+opposite_type = "RESISTANCE" if direction=="BUY" else "SUPPORT"
+opposite_levels = [lv for lv in levels if opposite_type in lv['type'] and
+                   ((lv['price'] > entry + 0.5 and direction=="BUY") or (lv['price'] < entry - 0.5 and direction=="SELL"))]
+opposite_levels = sorted(opposite_levels, key=lambda x: abs(x['price']-entry))
+
+if len(opposite_levels) >= 3:
+    tps = [opposite_levels[0]['price'], opposite_levels[1]['price'], opposite_levels[2]['price']]
+elif len(opposite_levels) == 2:
+    last_gap = abs(opposite_levels[1]['price']-opposite_levels[0]['price'])
+    runner = opposite_levels[1]['price'] + (last_gap*1.5 if direction=="BUY" else -last_gap*1.5)
+    tps = [opposite_levels[0]['price'], opposite_levels[1]['price'], runner]
+elif len(opposite_levels) == 1:
+    gap = abs(opposite_levels[0]['price']-entry)
+    tps = [opposite_levels[0]['price'],
+           entry + gap*1.8 if direction=="BUY" else entry - gap*1.8,
+           entry + gap*3.2 if direction=="BUY" else entry - gap*3.2]
+else:
+    tps = [entry + sl_dist*rr if direction=="BUY" else entry - sl_dist*rr for rr in [1.5,2.8,4.5]]
+
+# Ensure TPs are in correct direction and have minimum distance
+tps = [t for t in tps if (t > entry + 1.0 and direction=="BUY") or (t < entry - 1.0 and direction=="SELL")]
+while len(tps) < 3:
+    last = tps[-1] if tps else entry
+    extra = last + sl_dist*1.5 if direction=="BUY" else last - sl_dist*1.5
+    tps.append(extra)
+
+caption = f"🪙 ALCHEMIST XAU {direction} [{active_kz} SWING A-GRADE {score}/12] 🔥\n{kz_label} | {nearest['type']} @ {entry:.2f} | Dist {dist:.2f}$\n\n💰 Live: {live:.2f}\n📍 Entry: {entry-0.6:.2f} - {entry+0.6:.2f}\n🛑 SL: {sl:.2f} (${sl_dist:.2f})\n🎯 TP1: {tps[0]:.2f} ({abs(tps[0]-entry)/sl_dist:.1f}R STRUCTURE) | TP2: {tps[1]:.2f} ({abs(tps[1]-entry)/sl_dist:.1f}R STRUCTURE) | TP3: {tps[2]:.2f} ({abs(tps[2]-entry)/sl_dist:.1f}R RUNNER)\nCRT:{crt} | V6.5 SWING REAL XAU DYNAMIC | 0.01 lot ~${sl_dist:.2f}\nKisumu {kisumu_str}"
 
 tg_send(caption, photo="/tmp/chart.png")
