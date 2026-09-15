@@ -1,19 +1,22 @@
-name: gold
+name: Alchemist Gold
 on:
   schedule:
-    - cron: '0 7-20 * * 1-5'
+    - cron: '*/10 7-10,12-15,18-20 * * *'  # 10min only during your 8h KZ, saves 1000 mins
   workflow_dispatch:
 
 jobs:
-  send:
+  run:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v3
+      - name: Setup Python
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
-      - run: pip install requests matplotlib numpy
-      - run: python main.py
+          python-version: '3.10'
+      - name: Install deps
+        run: pip install matplotlib numpy requests
+      - name: Run Bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main.py
