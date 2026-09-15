@@ -1,7 +1,7 @@
 name: Alchemist Gold
 on:
   schedule:
-    - cron: '*/5 7-10,12-15 * * *'  # Every 5min ONLY LONDON (7-10 UTC) + NY_AM (12-15 UTC) = 1,512 min/month FREE
+    - cron: '*/5 7-10,12-15 * * *'
   workflow_dispatch:
 
 permissions:
@@ -11,27 +11,20 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-
-      - name: Install deps
-        run: pip install matplotlib numpy requests
-
+      - run: pip install matplotlib numpy requests
       - name: Run Bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python main.py
-
-      - name: Save cooldown file
+      - name: Save cooldown
         run: |
           git config user.name "Alchemist Bot"
           git config user.email "bot@alchemist.com"
-          git add last_signal.json || echo "no cooldown file yet"
-          git diff --staged --quiet || git commit -m "cooldown update [skip ci]"
-          git push || echo "nothing to push"
+          git add last_signal.json || echo "no file"
+          git diff --staged --quiet || git commit -m "cooldown [skip ci]"
+          git push || echo "push fail"
