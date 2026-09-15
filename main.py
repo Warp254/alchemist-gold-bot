@@ -94,26 +94,24 @@ ax.axhline(live, color='yellow', lw=1.5)
 plt.title(f'ALCHEMIST V6.5 SWING {active_kz} {live:.2f} | {nearest["type"]} {nearest["price"]:.2f} | {score}/12', color='white', fontsize=9, fontweight='bold')
 plt.savefig('/tmp/chart.png', dpi=200, facecolor='#0e0e0e', bbox_inches='tight'); plt.close()
 
-if dist > 4.0:
-    tg_send(f"🔍 [{active_kz} {kz_label}] Live {live:.2f}\nNearest {nearest['type']} {nearest['price']:.2f} Dist {dist:.2f}$ >4$ - waiting | Score {score}/12\nKisumu {kisumu_str}", photo="/tmp/chart.png")
+# D1 SWING TWEAK: Dist 8.0 not 4.0, Score 7 not 8
+if dist > 8.0:
+    tg_send(f"🔍 [{active_kz} {kz_label}] Live {live:.2f}\nNearest {nearest['type']} {nearest['price']:.2f} Dist {dist:.2f}$ >8$ - waiting | Score {score}/12\nKisumu {kisumu_str}", photo="/tmp/chart.png")
     sys.exit(0)
 
-if score < 8:
-    tg_send(f"🔍 [{active_kz} {kz_label}] Live {live:.2f}\n{nearest['type']} {nearest['price']:.2f} Score {score}/12 <8 - filtered\nKisumu {kisumu_str}", photo="/tmp/chart.png")
+if score < 7:
+    tg_send(f"🔍 [{active_kz} {kz_label}] Live {live:.2f}\n{nearest['type']} {nearest['price']:.2f} Score {score}/12 <7 - filtered\nKisumu {kisumu_str}", photo="/tmp/chart.png")
     sys.exit(0)
 
-# SWING SL - CAPPED
 atr = np.mean(highs[-14:]-lows[-14:])
 sl_dist = max(2.8, min(7.0, atr*1.5))
 entry = nearest['price']
 sl = entry - sl_dist if direction=="BUY" else entry + sl_dist
 
-# DYNAMIC STRUCTURE TPS - CAPPED TO 18$ MAX (REAL LONDON SWING)
 opposite_type = "RESISTANCE" if direction=="BUY" else "SUPPORT"
 opposite_levels = [lv for lv in levels if opposite_type in lv['type'] and
                    ((entry + 0.8 < lv['price'] < entry + 18 and direction=="BUY") or
                     (entry - 18 < lv['price'] < entry - 0.8 and direction=="SELL"))]
-# only recent 80 candles - no 7-day old highs like 4350
 opposite_levels = [lv for lv in opposite_levels if lv['idx'] > len(closes)-80]
 opposite_levels = sorted(opposite_levels, key=lambda x: abs(x['price']-entry))
 
@@ -121,7 +119,6 @@ if len(opposite_levels) >= 3:
     tps = [opposite_levels[0]['price'], opposite_levels[1]['price'], opposite_levels[2]['price']]
 elif len(opposite_levels) == 2:
     last_gap = abs(opposite_levels[1]['price']-opposite_levels[0]['price'])
-    # cap runner max 15$ from entry
     runner_raw = opposite_levels[1]['price'] + (last_gap*1.2 if direction=="BUY" else -last_gap*1.2)
     runner = min(runner_raw, entry+15) if direction=="BUY" else max(runner_raw, entry-15)
     tps = [opposite_levels[0]['price'], opposite_levels[1]['price'], runner]
@@ -136,7 +133,6 @@ else:
     tps = [entry + sl_dist*rr if direction=="BUY" else entry - sl_dist*rr for rr in [1.5,2.8,4.5]]
     tps = [min(t, entry+12) if direction=="BUY" else max(t, entry-12) for t in tps[:2]] + [min(tps[2], entry+18) if direction=="BUY" else max(tps[2], entry-18)]
 
-# final safety cap 18$ max
 tps = [min(t, entry+18) if direction=="BUY" else max(t, entry-18) for t in tps]
 tps = [t for t in tps if (t > entry + 1.0 and direction=="BUY") or (t < entry - 1.0 and direction=="SELL")]
 while len(tps) < 3:
@@ -145,6 +141,6 @@ while len(tps) < 3:
     extra = min(extra, entry+18) if direction=="BUY" else max(extra, entry-18)
     tps.append(extra)
 
-caption = f"🪙 ALCHEMIST XAU {direction} [{active_kz} SWING A-GRADE {score}/12] 🔥\n{kz_label} | {nearest['type']} @ {entry:.2f} | Dist {dist:.2f}$\n\n💰 Live: {live:.2f}\n📍 Entry: {entry-0.6:.2f} - {entry+0.6:.2f}\n🛑 SL: {sl:.2f} (${sl_dist:.2f})\n🎯 TP1: {tps[0]:.2f} ({abs(tps[0]-entry)/sl_dist:.1f}R STRUCTURE) | TP2: {tps[1]:.2f} ({abs(tps[1]-entry)/sl_dist:.1f}R STRUCTURE) | TP3: {tps[2]:.2f} ({abs(tps[2]-entry)/sl_dist:.1f}R RUNNER)\nCRT:{crt} | V6.5 SWING REAL XAU DYNAMIC CAPPED 18$ | 0.01 lot ~${sl_dist:.2f}\nKisumu {kisumu_str}"
+caption = f"🪙 ALCHEMIST XAU {direction} [{active_kz} SWING A-GRADE {score}/12] 🔥\n{kz_label} | {nearest['type']} @ {entry:.2f} | Dist {dist:.2f}$\n\n💰 Live: {live:.2f}\n📍 Entry: {entry-0.6:.2f} - {entry+0.6:.2f}\n🛑 SL: {sl:.2f} (${sl_dist:.2f})\n🎯 TP1: {tps[0]:.2f} ({abs(tps[0]-entry)/sl_dist:.1f}R STRUCTURE) | TP2: {tps[1]:.2f} ({abs(tps[1]-entry)/sl_dist:.1f}R STRUCTURE) | TP3: {tps[2]:.2f} ({abs(tps[2]-entry)/sl_dist:.1f}R RUNNER)\nCRT:{crt} | V6.5 D1 SWING DIST8 SCORE7 CAPPED 18$ | 0.01 lot ~${sl_dist:.2f}\nKisumu {kisumu_str}"
 
 tg_send(caption, photo="/tmp/chart.png")
