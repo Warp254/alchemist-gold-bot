@@ -17,11 +17,26 @@ def tg_send(text, photo=None):
     except: pass
 
 def get_gold():
-    url = "https://api.coingecko.com/api/v3/coins/pax-gold/market_chart?vs_currency=usd&days=7"
-    raw = json.loads(urllib.request.urlopen(url, timeout=20).read())
-    prices = [p[1] for p in raw['prices']]
-    closes = np.array(prices[::2][-400:])
-    return closes, float(closes[-1])
+    try:
+        # REAL spot XAUUSD - matches MT5
+        url = "https://api.gold-api.com/price/XAU"
+        j = json.loads(urllib.request.urlopen(url, timeout=10).read())
+        live = float(j['price'])
+        # History shape from PAXG but scaled to real live
+        url2 = "https://api.coingecko.com/api/v3/coins/pax-gold/market_chart?vs_currency=usd&days=7"
+        raw = json.loads(urllib.request.urlopen(url2, timeout=20).read())
+        prices = [p[1] for p in raw['prices']]
+        closes = np.array(prices[::2][-400:])
+        factor = live / float(closes[-1]) if closes[-1]!=0 else 1.0
+        closes = closes * factor
+        return closes, live
+    except Exception as e:
+        # fallback PAXG
+        url = "https://api.coingecko.com/api/v3/coins/pax-gold/market_chart?vs_currency=usd&days=7"
+        raw = json.loads(urllib.request.urlopen(url, timeout=20).read())
+        prices = [p[1] for p in raw['prices']]
+        closes = np.array(prices[::2][-400:])
+        return closes, float(closes[-1])
 
 KILLZONES = {"LONDON":(7,10,"10am-1pm Kisumu"),"NY_AM":(12,15,"3pm-6pm Kisumu"),"NY_PM":(18,20,"9pm-11pm Kisumu")}
 
@@ -39,7 +54,7 @@ if not active_kz:
     try:
         closes, live = get_gold()
         tg_send(f"🔍 [OUTSIDE KZ {hour_utc} UTC] Live {live:.2f} - sleeping til next KZ\nKisumu {kisumu_str}")
-    except Exception as e:
+    except:
         tg_send(f"🔍 [OUTSIDE KZ {hour_utc} UTC] - sleeping til next KZ\nKisumu {kisumu_str}")
     sys.exit(0)
 
@@ -87,13 +102,13 @@ if dist > 4.0:
     sys.exit(0)
 
 if score < 8:
-    tg_send(f"🔍 [{active_kz} {kz_label}] Live {live:.2f}\n{nearest['type']} {nearest['price']:.2f} Score {score}/12 <8 - filtered (need A-GRADE)\nKisumu {kisumu_str}", photo="/tmp/chart.png")
+    tg_send(f"🔍 [{active_kz} {kz_label}] Live {live:.2f}\n{nearest['type']} {nearest['price']:.2f} Score {score}/12 <8 - filtered\nKisumu {kisumu_str}", photo="/tmp/chart.png")
     sys.exit(0)
 
 atr = np.mean(highs[-14:]-lows[-14:]); sl_dist = max(1.2, min(4.0, atr*0.7))
 entry = nearest['price']; sl = entry - sl_dist if direction=="BUY" else entry + sl_dist
 tps = [entry + sl_dist*rr if direction=="BUY" else entry - sl_dist*rr for rr in [1.5,2.5,4.0]]
 
-caption = f"🪙 ALCHEMIST XAU {direction} [{active_kz} STRICT A-GRADE {score}/12] 🔥\n{kz_label} | {nearest['type']} @ {entry:.2f} | Dist {dist:.2f}$\n\n💰 Live: {live:.2f}\n📍 Entry: {entry-0.4:.2f} - {entry+0.4:.2f}\n🛑 SL: {sl:.2f} (${sl_dist:.2f})\n🎯 TP1: {tps[0]:.2f} (50%) | TP2: {tps[1]:.2f} (30%) | TP3: {tps[2]:.2f} (20%)\nCRT:{crt} | V6.5 STRICT\nKisumu {kisumu_str}"
+caption = f"🪙 ALCHEMIST XAU {direction} [{active_kz} STRICT A-GRADE {score}/12] 🔥\n{kz_label} | {nearest['type']} @ {entry:.2f} | Dist {dist:.2f}$\n\n💰 Live: {live:.2f}\n📍 Entry: {entry-0.4:.2f} - {entry+0.4:.2f}\n🛑 SL: {sl:.2f} (${sl_dist:.2f})\n🎯 TP1: {tps[0]:.2f} (50%) | TP2: {tps[1]:.2f} (30%) | TP3: {tps[2]:.2f} (20%)\nCRT:{crt} | V6.5 STRICT REAL XAU\nKisumu {kisumu_str}"
 
 tg_send(caption, photo="/tmp/chart.png")
