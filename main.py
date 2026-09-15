@@ -94,9 +94,9 @@ ax.axhline(live, color='yellow', lw=1.5)
 plt.title(f'ALCHEMIST V6.5 SWING {active_kz} {live:.2f} | {nearest["type"]} {nearest["price"]:.2f} | {score}/12', color='white', fontsize=9, fontweight='bold')
 plt.savefig('/tmp/chart.png', dpi=200, facecolor='#0e0e0e', bbox_inches='tight'); plt.close()
 
-# D1 SWING TWEAK: Dist 8.0 not 4.0, Score 7 not 8
-if dist > 8.0:
-    tg_send(f"🔍 [{active_kz} {kz_label}] Live {live:.2f}\nNearest {nearest['type']} {nearest['price']:.2f} Dist {dist:.2f}$ >8$ - waiting | Score {score}/12\nKisumu {kisumu_str}", photo="/tmp/chart.png")
+# D1 SWING FINAL: Dist 12.0 for NY volatility + Score 7 for D1 OB
+if dist > 12.0:
+    tg_send(f"🔍 [{active_kz} {kz_label}] Live {live:.2f}\nNearest {nearest['type']} {nearest['price']:.2f} Dist {dist:.2f}$ >12$ - waiting | Score {score}/12\nKisumu {kisumu_str}", photo="/tmp/chart.png")
     sys.exit(0)
 
 if score < 7:
@@ -141,6 +141,6 @@ while len(tps) < 3:
     extra = min(extra, entry+18) if direction=="BUY" else max(extra, entry-18)
     tps.append(extra)
 
-caption = f"🪙 ALCHEMIST XAU {direction} [{active_kz} SWING A-GRADE {score}/12] 🔥\n{kz_label} | {nearest['type']} @ {entry:.2f} | Dist {dist:.2f}$\n\n💰 Live: {live:.2f}\n📍 Entry: {entry-0.6:.2f} - {entry+0.6:.2f}\n🛑 SL: {sl:.2f} (${sl_dist:.2f})\n🎯 TP1: {tps[0]:.2f} ({abs(tps[0]-entry)/sl_dist:.1f}R STRUCTURE) | TP2: {tps[1]:.2f} ({abs(tps[1]-entry)/sl_dist:.1f}R STRUCTURE) | TP3: {tps[2]:.2f} ({abs(tps[2]-entry)/sl_dist:.1f}R RUNNER)\nCRT:{crt} | V6.5 D1 SWING DIST8 SCORE7 CAPPED 18$ | 0.01 lot ~${sl_dist:.2f}\nKisumu {kisumu_str}"
+caption = f"🪙 ALCHEMIST XAU {direction} [{active_kz} SWING A-GRADE {score}/12] 🔥\n{kz_label} | {nearest['type']} @ {entry:.2f} | Dist {dist:.2f}$\n\n💰 Live: {live:.2f}\n📍 Entry: {entry-0.6:.2f} - {entry+0.6:.2f}\n🛑 SL: {sl:.2f} (${sl_dist:.2f})\n🎯 TP1: {tps[0]:.2f} ({abs(tps[0]-entry)/sl_dist:.1f}R STRUCTURE) | TP2: {tps[1]:.2f} ({abs(tps[1]-entry)/sl_dist:.1f}R STRUCTURE) | TP3: {tps[2]:.2f} ({abs(tps[2]-entry)/sl_dist:.1f}R RUNNER)\nCRT:{crt} | V6.5 D1 SWING DIST12 SCORE7 CAPPED 18$ | 0.01 lot ~${sl_dist:.2f}\nKisumu {kisumu_str}"
 
 tg_send(caption, photo="/tmp/chart.png")
