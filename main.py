@@ -18,11 +18,9 @@ def tg_send(text, photo=None):
 
 def get_gold():
     try:
-        # REAL spot XAUUSD - matches MT5
         url = "https://api.gold-api.com/price/XAU"
         j = json.loads(urllib.request.urlopen(url, timeout=10).read())
         live = float(j['price'])
-        # History shape from PAXG but scaled to real live
         url2 = "https://api.coingecko.com/api/v3/coins/pax-gold/market_chart?vs_currency=usd&days=7"
         raw = json.loads(urllib.request.urlopen(url2, timeout=20).read())
         prices = [p[1] for p in raw['prices']]
@@ -30,8 +28,7 @@ def get_gold():
         factor = live / float(closes[-1]) if closes[-1]!=0 else 1.0
         closes = closes * factor
         return closes, live
-    except Exception as e:
-        # fallback PAXG
+    except:
         url = "https://api.coingecko.com/api/v3/coins/pax-gold/market_chart?vs_currency=usd&days=7"
         raw = json.loads(urllib.request.urlopen(url, timeout=20).read())
         prices = [p[1] for p in raw['prices']]
@@ -105,39 +102,49 @@ if score < 8:
     tg_send(f"🔍 [{active_kz} {kz_label}] Live {live:.2f}\n{nearest['type']} {nearest['price']:.2f} Score {score}/12 <8 - filtered\nKisumu {kisumu_str}", photo="/tmp/chart.png")
     sys.exit(0)
 
-# SWING SL
+# SWING SL - CAPPED
 atr = np.mean(highs[-14:]-lows[-14:])
 sl_dist = max(2.8, min(7.0, atr*1.5))
 entry = nearest['price']
 sl = entry - sl_dist if direction=="BUY" else entry + sl_dist
 
-# DYNAMIC STRUCTURE TPS - REAL ICT
+# DYNAMIC STRUCTURE TPS - CAPPED TO 18$ MAX (REAL LONDON SWING)
 opposite_type = "RESISTANCE" if direction=="BUY" else "SUPPORT"
 opposite_levels = [lv for lv in levels if opposite_type in lv['type'] and
-                   ((lv['price'] > entry + 0.5 and direction=="BUY") or (lv['price'] < entry - 0.5 and direction=="SELL"))]
+                   ((entry + 0.8 < lv['price'] < entry + 18 and direction=="BUY") or
+                    (entry - 18 < lv['price'] < entry - 0.8 and direction=="SELL"))]
+# only recent 80 candles - no 7-day old highs like 4350
+opposite_levels = [lv for lv in opposite_levels if lv['idx'] > len(closes)-80]
 opposite_levels = sorted(opposite_levels, key=lambda x: abs(x['price']-entry))
 
 if len(opposite_levels) >= 3:
     tps = [opposite_levels[0]['price'], opposite_levels[1]['price'], opposite_levels[2]['price']]
 elif len(opposite_levels) == 2:
     last_gap = abs(opposite_levels[1]['price']-opposite_levels[0]['price'])
-    runner = opposite_levels[1]['price'] + (last_gap*1.5 if direction=="BUY" else -last_gap*1.5)
+    # cap runner max 15$ from entry
+    runner_raw = opposite_levels[1]['price'] + (last_gap*1.2 if direction=="BUY" else -last_gap*1.2)
+    runner = min(runner_raw, entry+15) if direction=="BUY" else max(runner_raw, entry-15)
     tps = [opposite_levels[0]['price'], opposite_levels[1]['price'], runner]
 elif len(opposite_levels) == 1:
     gap = abs(opposite_levels[0]['price']-entry)
-    tps = [opposite_levels[0]['price'],
-           entry + gap*1.8 if direction=="BUY" else entry - gap*1.8,
-           entry + gap*3.2 if direction=="BUY" else entry - gap*3.2]
+    tp2_raw = entry + gap*1.8 if direction=="BUY" else entry - gap*1.8
+    tp3_raw = entry + gap*2.8 if direction=="BUY" else entry - gap*2.8
+    tp2 = min(tp2_raw, entry+12) if direction=="BUY" else max(tp2_raw, entry-12)
+    tp3 = min(tp3_raw, entry+18) if direction=="BUY" else max(tp3_raw, entry-18)
+    tps = [opposite_levels[0]['price'], tp2, tp3]
 else:
     tps = [entry + sl_dist*rr if direction=="BUY" else entry - sl_dist*rr for rr in [1.5,2.8,4.5]]
+    tps = [min(t, entry+12) if direction=="BUY" else max(t, entry-12) for t in tps[:2]] + [min(tps[2], entry+18) if direction=="BUY" else max(tps[2], entry-18)]
 
-# Ensure TPs are in correct direction and have minimum distance
+# final safety cap 18$ max
+tps = [min(t, entry+18) if direction=="BUY" else max(t, entry-18) for t in tps]
 tps = [t for t in tps if (t > entry + 1.0 and direction=="BUY") or (t < entry - 1.0 and direction=="SELL")]
 while len(tps) < 3:
     last = tps[-1] if tps else entry
-    extra = last + sl_dist*1.5 if direction=="BUY" else last - sl_dist*1.5
+    extra = last + sl_dist*0.8 if direction=="BUY" else last - sl_dist*0.8
+    extra = min(extra, entry+18) if direction=="BUY" else max(extra, entry-18)
     tps.append(extra)
 
-caption = f"🪙 ALCHEMIST XAU {direction} [{active_kz} SWING A-GRADE {score}/12] 🔥\n{kz_label} | {nearest['type']} @ {entry:.2f} | Dist {dist:.2f}$\n\n💰 Live: {live:.2f}\n📍 Entry: {entry-0.6:.2f} - {entry+0.6:.2f}\n🛑 SL: {sl:.2f} (${sl_dist:.2f})\n🎯 TP1: {tps[0]:.2f} ({abs(tps[0]-entry)/sl_dist:.1f}R STRUCTURE) | TP2: {tps[1]:.2f} ({abs(tps[1]-entry)/sl_dist:.1f}R STRUCTURE) | TP3: {tps[2]:.2f} ({abs(tps[2]-entry)/sl_dist:.1f}R RUNNER)\nCRT:{crt} | V6.5 SWING REAL XAU DYNAMIC | 0.01 lot ~${sl_dist:.2f}\nKisumu {kisumu_str}"
+caption = f"🪙 ALCHEMIST XAU {direction} [{active_kz} SWING A-GRADE {score}/12] 🔥\n{kz_label} | {nearest['type']} @ {entry:.2f} | Dist {dist:.2f}$\n\n💰 Live: {live:.2f}\n📍 Entry: {entry-0.6:.2f} - {entry+0.6:.2f}\n🛑 SL: {sl:.2f} (${sl_dist:.2f})\n🎯 TP1: {tps[0]:.2f} ({abs(tps[0]-entry)/sl_dist:.1f}R STRUCTURE) | TP2: {tps[1]:.2f} ({abs(tps[1]-entry)/sl_dist:.1f}R STRUCTURE) | TP3: {tps[2]:.2f} ({abs(tps[2]-entry)/sl_dist:.1f}R RUNNER)\nCRT:{crt} | V6.5 SWING REAL XAU DYNAMIC CAPPED 18$ | 0.01 lot ~${sl_dist:.2f}\nKisumu {kisumu_str}"
 
 tg_send(caption, photo="/tmp/chart.png")
