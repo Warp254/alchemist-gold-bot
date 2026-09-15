@@ -1,7 +1,7 @@
 name: Alchemist Gold
 on:
   schedule:
-    - cron: '*/10 7-10,12-15,18-20 * * *'  # 10min only during your 8h KZ, saves 1000 mins
+    - cron: '*/5 7-10,12-15 * * *'  # Every 5min LONDON + NY_AM only = 1,512 min/month FREE
   workflow_dispatch:
 
 jobs:
