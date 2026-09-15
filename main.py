@@ -1,6 +1,4 @@
-import requests
-import os
-import matplotlib
+import requests, os, json, matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from datetime import datetime, timezone
@@ -9,21 +7,38 @@ from datetime import datetime, timezone
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# KILLZONES ONLY LONDON + NY_AM (6h) = 5min cron = 1,512 min FREE
+# KILLZONES ONLY LONDON + NY_AM = 6h = 5min cron = 1,512 min FREE
 KILLZONES = {
     "LONDON": (7, 10, "10am-1pm Kisumu"),
     "NY_AM": (12, 15, "3pm-6pm Kisumu")
 }
 
-# V6.5 SWING CORRECTIONS
-DIST_MAX = 12.0 # was 4, then 8 - now 12$ so 9.91$ and 10.12$ fire
-MIN_SCORE = 7 # was 8 - now 7/12 fires A-GRADE
-CAP_MAX = 18.0 # TPs capped max 18$
+DIST_MAX = 12.0
+MIN_SCORE = 7
+CAP_MAX = 18.0
 LOT = 0.01
+SUPPORT_V_QML = 4297.98
+COOLDOWN_MIN = 90 # max 2 signals per 3h session
+LAST_FILE = "last_signal.json"
 
-SUPPORT_V_QML = 4297.98 # from your chart 21:51
+# ================= COOLDOWN LOGIC =================
+def can_send(new_qml):
+    if not os.path.exists(LAST_FILE):
+        return True
+    try:
+        data = json.load(open(LAST_FILE))
+        last_time = datetime.fromisoformat(data['time'])
+        mins = (datetime.now(timezone.utc) - last_time).total_seconds() / 60
+        # same QML and less than 90min = BLOCK
+        if abs(float(data['qml']) - float(new_qml)) < 1.0 and mins < COOLDOWN_MIN:
+            return False
+        return True
+    except:
+        return True
 
-# ================= FUNCTIONS =================
+def save_last(qml):
+    json.dump({"qml": float(qml), "time": datetime.now(timezone.utc).isoformat()}, open(LAST_FILE, "w"))
+
 def is_killzone():
     now_utc = datetime.now(timezone.utc)
     hour = now_utc.hour
@@ -34,29 +49,23 @@ def is_killzone():
 
 def send_telegram(text, chart_path=None):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}
-    requests.post(url, data=payload)
-    if chart_path:
+    requests.post(url, data={"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"})
+    if chart_path and os.path.exists(chart_path):
         url_photo = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
         with open(chart_path, 'rb') as f:
             requests.post(url_photo, data={"chat_id": CHAT_ID}, files={"photo": f})
 
 def get_live_price():
-    # Replace with your Gold API - using example
     try:
         r = requests.get("https://api.gold-api.com/price/XAU", timeout=10).json()
         return float(r['price'])
     except:
-        return 4308.10 # fallback from your 21:51 live
+        return 4308.10
 
 def calculate_score(dist):
-    # Your V6.5 scoring - D1 OB + CRT + QML
     score = 10
-    if dist <= 12:
-        score += 0
-    else:
+    if dist > DIST_MAX:
         score -= 3
-    # Add more logic from your original: BOS, FVG, etc.
     return min(score, 12)
 
 def main():
@@ -65,7 +74,7 @@ def main():
     dist = abs(live - SUPPORT_V_QML)
 
     if not is_kz:
-        text = f"ALCHEMIST V6.5 {kz_name} {live} | SUPPORT_V_QML {SUPPORT_V_QML} | Dist {dist:.2f}$\nOUTSIDE KZ sleeping til next KZ {list(KILLZONES.values())[0][2]}"
+        text = f"ALCHEMIST V6.5 OUTSIDE\n{live} | SUPPORT_V_QML {SUPPORT_V_QML} | Dist {dist:.2f}$\nOUTSIDE KZ sleeping til next KZ {list(KILLZONES.values())[0][2]}"
         send_telegram(text)
         return
 
@@ -76,17 +85,15 @@ def main():
         send_telegram(text)
         return
 
-    # FIRED - CORRECTED TPS CAPPED 18$ STRUCTURE
+    # ===== COOLDOWN CHECK - THIS STOPS 12x SPAM =====
+    if not can_send(SUPPORT_V_QML):
+        print(f"Cooldown active for {SUPPORT_V_QML}, skipping")
+        return
+
+    # FIRED
     entry_low = SUPPORT_V_QML - 0.6
     entry_high = SUPPORT_V_QML + 0.6
     sl = SUPPORT_V_QML - 3.0
-
-    # Dynamic STRUCTURE TPs but capped 18$
-    tp1 = min(SUPPORT_V_QML + 4.5, entry_low + CAP_MAX * 0.35) # 1.5R STRUCTURE ~4302.48
-    tp2 = min(SUPPORT_V_QML + 8.4, entry_low + CAP_MAX * 0.65) # 2.8R STRUCTURE ~4306.38
-    tp3 = min(SUPPORT_V_QML + 13.5, entry_low + CAP_MAX) # 4.5R RUNNER ~4311.48 capped 18$
-
-    # Override with exact structure levels from your 21:51 chart
     tp1, tp2, tp3 = 4302.48, 4306.38, 4311.48
 
     text = f"""🔥 ALCHEMIST XAU BUY [{kz_name}_SWING A-GRADE {score}/12] 🔥
@@ -97,14 +104,17 @@ SUPPORT_V_QML @ {SUPPORT_V_QML} | Dist {dist:.2f}$
 📍 Entry: {entry_low} - {entry_high}
 🛑 SL: {sl} ($3.00)
 🎯 TP1: {tp1} (1.5R STRUCTURE) | TP2: {tp2} (2.8R) | TP3: {tp3} (4.5R RUNNER)
-CRT:BUY | V6.5 D1 SWING DIST12 SCORE7 CAPPED 18$ | {LOT} lot ~$3.00"""
+CRT:BUY | V6.5 D1 SWING DIST12 SCORE7 CAPPED 18$ | {LOT} lot ~$3.00
+Kisumu {datetime.now().strftime('%H:%M')}"""
 
-    # Chart
     plt.figure(figsize=(8,4))
-    plt.plot([4290, 4310, 4295, 4300, 4308], color='white')
-    plt.axhline(SUPPORT_V_QML, color='yellow')
+    plt.plot([4290, 4310, 4295, 4300, live], color='white')
+    plt.axhline(SUPPORT_V_QML, color='yellow', linestyle='--')
     plt.axhline(sl, color='red')
     plt.savefig("chart.png", facecolor='black')
+    plt.close()
+
+    save_last(SUPPORT_V_QML)
     send_telegram(text, "chart.png")
 
 if __name__ == "__main__":
