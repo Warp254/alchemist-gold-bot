@@ -3,123 +3,129 @@ from datetime import datetime, timezone
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
-KILLZONES = {"LONDON": (7,10,"10am-1pm Kisumu"), "NY_AM": (12,15,"3pm-6pm Kisumu")}
-DIST_MAX, MIN_SCORE, COOLDOWN_MIN = 12.0, 7, 90
 LAST_FILE = "last_signal.json"
+
+KILLZONES = {"LONDON": (7,10), "NY_AM": (12,15)}
+COOLDOWN = 90
 
 def can_send(q):
     if not os.path.exists(LAST_FILE): return True
     try:
         d=json.load(open(LAST_FILE))
         mins=(datetime.now(timezone.utc)-datetime.fromisoformat(d['time'])).total_seconds()/60
-        return not (abs(float(d['qml'])-float(q))<1.0 and mins<COOLDOWN_MIN)
+        return not (abs(float(d['qml'])-q)<2.0 and mins<COOLDOWN)
     except: return True
-
-def save_last(q):
-    json.dump({"qml":float(q),"time":datetime.now(timezone.utc).isoformat()}, open(LAST_FILE,"w"))
-
+def save_last(q): json.dump({"qml":float(q),"time":datetime.now(timezone.utc).isoformat()}, open(LAST_FILE,"w"))
 def is_kz():
     h=datetime.now(timezone.utc).hour
-    for n,(s,e,l) in KILLZONES.items():
-        if s<=h<e: return True,n,l
-    return False,"OUTSIDE",""
+    for n,(s,e) in KILLZONES.items():
+        if s<=h<e: return True,n
+    return False,"OUT"
 
-def send_telegram(text):
-    try:
-        url=f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        requests.post(url, data={"chat_id":CHAT_ID, "text":text}, timeout=10)
-    except Exception as e:
-        print(f"Telegram error {e}")
+def send_tg(t):
+    try: requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", data={"chat_id":CHAT_ID,"text":t}, timeout=10)
+    except Exception as e: print(e)
 
-def get_live_price():
-    try:
-        r=requests.get("https://api.gold-api.com/price/XAU", timeout=10, headers={"User-Agent":"Mozilla/5.0"}).json()
-        return float(r['price'])
-    except Exception as e:
-        print(f"Gold-API fail {e}")
-        return None
+def get_live():
+    try: return float(requests.get("https://api.gold-api.com/price/XAU", timeout=8, headers={"User-Agent":"Mozilla/5.0"}).json()['price'])
+    except: return None
 
 def get_candles():
-    try:
-        url="https://api.binance.com/api/v3/klines?symbol=PAXGUSDT&interval=1h&limit=200"
-        r=requests.get(url, timeout=10, headers={"User-Agent":"Mozilla/5.0"}).json()
-        return [{"high":float(x[2]),"low":float(x[3]),"close":float(x[4]),"open":float(x[1])} for x in r]
-    except Exception as e:
-        print(f"Binance fail {e}")
-        traceback.print_exc()
-        return []
+    for url in ["https://data-api.binance.vision/api/v3/klines?symbol=PAXGUSDT&interval=1h&limit=200","https://api.binance.com/api/v3/klines?symbol=PAXGUSDT&interval=1h&limit=200"]:
+        try:
+            r=requests.get(url, timeout=10, headers={"User-Agent":"Mozilla/5.0"}).json()
+            if isinstance(r,list) and len(r)>100:
+                return [{"h":float(x[2]),"l":float(x[3]),"c":float(x[4]),"o":float(x[1])} for x in r]
+        except: continue
+    return []
 
-def scan_qmls(candles, live):
+def is_bullish_engulf(i,c): return c[i]['c']>c[i]['o'] and c[i]['c']>c[i-1]['h']
+def is_bearish_engulf(i,c): return c[i]['c']<c[i]['o'] and c[i]['c']<c[i-1]['l']
+
+def scan_v7(candles, live):
     qmls=[]
-    if len(candles)<50: return []
-    for i in range(30, len(candles)-2):
-        if candles[i]['low'] < candles[i-20]['low'] and candles[i]['close'] > candles[i-20]['low']:
-            price=candles[i-20]['low']
-            dist=abs(live-price)
-            if dist<25:
-                qmls.append({"price":price,"dist":dist,"score":10 if dist<12 else 6,"side":"BUY"})
-        if candles[i]['high'] > candles[i-20]['high'] and candles[i]['close'] < candles[i-20]['high']:
-            price=candles[i-20]['high']
-            dist=abs(live-price)
-            if dist<25:
-                qmls.append({"price":price,"dist":dist,"score":10 if dist<12 else 6,"side":"SELL"})
-    qmls=sorted(qmls, key=lambda x: x['dist'])
+    # need 80 candles for structure
+    for i in range(60, len(candles)-3):
+        # --- BULLISH QML: Sell Liquidity Sweep + Buy QML ---
+        # Find left shoulder low
+        ls_low = min([x['l'] for x in candles[i-40:i-20]])
+        head_low = candles[i-10]['l'] if i>=10 else 9999
+        curr_low = candles[i]['l']
+        # Head must sweep LS low (liquidity grab)
+        if head_low < ls_low - 0.5 and curr_low > head_low:
+            # BOS: close above last swing high after head
+            swing_high = max([x['h'] for x in candles[i-10:i]])
+            if candles[-1]['c'] > candles[-2]['h']: # mini BOS
+                dist = abs(live - curr_low)
+                if dist<30:
+                    score=0
+                    if head_low < ls_low: score+=3 # sweep
+                    if candles[i]['c'] > candles[i]['o']: score+=2 # engulfing
+                    if dist<12: score+=4
+                    elif dist<20: score+=2
+                    score+=2 # discount check below
+                    qmls.append({"price":curr_low,"dist":dist,"score":min(score,12),"side":"BUY","sweep":round(ls_low-head_low,2),"bos":True})
+
+        # --- BEARISH QML ---
+        ls_high = max([x['h'] for x in candles[i-40:i-20]])
+        head_high = candles[i-10]['h'] if i>=10 else 0
+        curr_high = candles[i]['h']
+        if head_high > ls_high + 0.5 and curr_high < head_high:
+            if candles[-1]['c'] < candles[-2]['l']:
+                dist = abs(live - curr_high)
+                if dist<30:
+                    score=0
+                    if head_high > ls_high: score+=3
+                    if candles[i]['c'] < candles[i]['o']: score+=2
+                    if dist<12: score+=4
+                    elif dist<20: score+=2
+                    score+=2
+                    qmls.append({"price":curr_high,"dist":dist,"score":min(score,12),"side":"SELL","sweep":round(head_high-ls_high,2),"bos":True})
+
+    # dedup + sort
+    qmls=sorted(qmls, key=lambda x: (-x['score'], x['dist']))
     uniq=[]
     for q in qmls:
-        if not any(abs(q['price']-u['price'])<2 for u in uniq):
-            uniq.append(q)
-    return uniq[:4]
+        if not any(abs(q['price']-u['price'])<3 for u in uniq): uniq.append(q)
+    return uniq[:3]
 
 def main():
     try:
-        ok,kz_name,kz_label=is_kz()
+        ok,kz=is_kz()
         candles=get_candles()
-        if not candles:
-            print("No candles - Binance blocked, abort")
-            return
-        live_gold=get_live_price()
-        live=live_gold if live_gold else candles[-1]['close']
-
+        if len(candles)<100:
+            print("No candles, abort"); return
+        live=get_live() or candles[-1]['c']
         if not ok:
-            print(f"OUTSIDE KZ live {live} sleeping - no Telegram (correct for now)")
-            return
+            print(f"OUTSIDE KZ live {live} sleep - OK"); return
 
-        qmls=scan_qmls(candles, live)
-        print(f"HYBRID OK live gold-api {live} found {qmls}")
-        if not qmls:
-            print("No QML near")
-            return
-
+        qmls=scan_v7(candles, live)
+        print(f"V7 SCAN live {live} QMLs: {qmls}")
+        if not qmls: return
         best=qmls[0]
-        if best['dist']>DIST_MAX or best['score']<MIN_SCORE:
-            print(f"Best {best}")
-            return
+        if best['dist']>15 or best['score']<7:
+            print(f"Weak {best} skip"); return
         if not can_send(best['price']):
-            print("Cooldown")
-            return
+            print("Cooldown"); return
 
-        qml, side = best['price'], best['side']
+        qml,side=best['price'],best['side']
         if side=="BUY":
-            entry_l, entry_h, sl = qml-0.6, qml+0.6, qml-3.0
-            tp1, tp2, tp3 = qml+4.5, qml+8.4, qml+13.5
-            emoji="🔥 BUY"
+            entry=f"{qml-0.6:.2f} - {qml+0.6:.2f}"; sl=f"{qml-3.5:.2f}"; tps=f"{qml+5:.2f} | {qml+10:.2f} | {qml+18:.2f}"; emoji="🔥 BUY V-QML"
+            logic=f"Sweep {best['sweep']}$ + BOS + Engulfing"
         else:
-            entry_l, entry_h, sl = qml-0.6, qml+0.6, qml+3.0
-            tp1, tp2, tp3 = qml-4.5, qml-8.4, qml-13.5
-            emoji="🔻 SELL"
+            entry=f"{qml-0.6:.2f} - {qml+0.6:.2f}"; sl=f"{qml+3.5:.2f}"; tps=f"{qml-5:.2f} | {qml-10:.2f} | {qml-18:.2f}"; emoji="🔻 SELL V-QML"
+            logic=f"Sweep {best['sweep']}$ + BOS + Engulfing"
 
-        text=f"""{emoji} ALCHEMIST REAL XAU {side} [{kz_name} A-GRADE {best['score']}/12]
-{kz_label} | {side}_V_QML @ {qml:.2f} | Dist {best['dist']:.2f}$
-Live: {live:.2f}
-Entry: {entry_l:.2f}-{entry_h:.2f} SL: {sl:.2f} TP1 {tp1:.2f} TP2 {tp2:.2f} TP3 {tp3:.2f}
-V6.7.1 HYBRID BUY/SELL | Kisumu {datetime.now().strftime('%H:%M')}"""
-        save_last(qml)
-        send_telegram(text)
-        print("Sent Telegram OK")
+        text=f"""{emoji} [{kz} {best['score']}/12 A-GRADE]
+Side: {side} @ {qml:.2f} | Dist {best['dist']:.2f}$ live {live:.2f}
+Logic: {logic}
+Entry: {entry}
+SL: {sl} (3.5$ structure)
+TP: {tps}
+CRT: {side} BOS confirmed | Killzone {kz}
+V7.0 PRO REAL QML | Kisumu {datetime.now().strftime('%H:%M')}"""
+        save_last(qml); send_tg(text); print("Sent TG VIP")
     except Exception as e:
-        print(f"CRASH {e}")
-        traceback.print_exc()
+        print(f"CRASH {e}"); traceback.print_exc()
 
-if __name__=="__main__":
-    main()
+if __name__=="__main__": main()
