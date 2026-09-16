@@ -1,1 +1,20 @@
-{"live":"Loading...","bias":"WAITING","atr":0,"eq":0,"kz":"WAITING KZ","last_scan":"Bot warming up - first scan in 2 mins","updated":"now","signals":[]}
+{
+  "live": 4338.61,
+  "bias": "NEUTRAL",
+  "atr": 4.99,
+  "eq": 4314.26,
+  "kz": "LONDON",
+  "last_scan": "SELL V8 [LONDON 10/12 A]",
+  "updated": "2026-09-16T07:10:22.888438+00:00",
+  "signals": [
+    {
+      "time": "2026-09-16T07:10:22.888322+00:00",
+      "side": "SELL",
+      "qml": 4341.48,
+      "live": 4338.61,
+      "score": 10,
+      "kz": "LONDON",
+      "bias": "NEUTRAL"
+    }
+  ]
+}
