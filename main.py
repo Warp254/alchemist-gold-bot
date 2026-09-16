@@ -6,11 +6,14 @@ START = time.time()
 
 def send_tg(text):
     t=os.getenv("TELEGRAM_BOT_TOKEN"); c=os.getenv("TELEGRAM_CHAT_ID")
-    if not t or not c: return
+    if not t or not c:
+        print("No Telegram secrets!")
+        return
     try:
         requests.post(f"https://api.telegram.org/bot{t}/sendMessage",
         json={"chat_id":c,"text":text,"parse_mode":"Markdown"}, timeout=15)
-    except Exception as e: print(e)
+        print("Telegram sent!")
+    except Exception as e: print(f"TG fail: {e}")
 
 def get_real_candles():
     api_key = os.getenv("TWELVEDATA_API_KEY")
@@ -23,11 +26,9 @@ def get_real_candles():
                 closes = [float(v["close"]) for v in vals]
                 highs = [float(v["high"]) for v in vals]
                 lows = [float(v["low"]) for v in vals]
-                print(f"REAL CANDLES: {len(vals)} candles")
                 return closes, highs, lows, float(vals[-1]["close"]), "TWELVEDATA REAL"
         except Exception as e: print(f"TwelveData fail: {e}")
 
-    # Fallback
     try:
         price = float(requests.get("https://api.gold-api.com/price/XAU", timeout=10).json().get("price",0))
     except: price=4340.0
@@ -51,7 +52,7 @@ session_name, is_open = get_session()
 Path("docs").mkdir(exist_ok=True)
 Path("docs/history.json").write_text(json.dumps(closes[-100:]))
 
-# === REAL ALCHEMIST BRAIN ===
+# === REAL BRAIN ===
 if len(closes) >= 20:
     lookback_high = max(highs[-20:])
     lookback_low = min(lows[-20:])
@@ -76,7 +77,7 @@ else:
     lookback_high=live_price; lookback_low=live_price
     eq=live_price-8; atr=4.5; qml=eq; bias="NEUTRAL"; reason="Building 20 bars"
 
-# === FIXED: CLEAN 2 DECIMALS + PROPER RR 1:1.5 ===
+# === FIXED RR + 2 DECIMALS ===
 live_price = round(live_price, 2)
 lookback_high = round(lookback_high, 2)
 lookback_low = round(lookback_low, 2)
@@ -84,9 +85,9 @@ eq = round(eq, 2); qml = round(qml, 2); atr = round(atr, 2)
 
 if bias=="BUY":
     entry=live_price
-    sl=round(entry - atr*1.2, 2) # Tight SL
-    tp1=round(entry + atr*1.5, 2) # RR 1:1.25
-    tp2=round(entry + atr*3.0, 2) # RR 1:2.5
+    sl=round(entry - atr*1.2, 2)
+    tp1=round(entry + atr*1.5, 2)
+    tp2=round(entry + atr*3.0, 2)
 elif bias=="SELL":
     entry=live_price
     sl=round(entry + atr*1.2, 2)
@@ -95,14 +96,18 @@ elif bias=="SELL":
 else:
     entry=live_price; sl=tp1=tp2=0
 
-# Anti-spam
+# === FIXED ALERT LOGIC ===
 last_path=Path("docs/last_bias.json")
 last_bias = json.loads(last_path.read_text()).get("bias") if last_path.exists() else "NONE"
-should_alert = (bias!= last_bias and bias in ["BUY","SELL"] and is_open) or (len(closes)%12==0)
+is_manual = os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch"
+should_alert = is_manual or (bias!= last_bias and bias in ["BUY","SELL"] and is_open) or (len(closes)%12==0)
+
+print(f"Last bias: {last_bias}, Current: {bias}, Manual: {is_manual}, Should alert: {should_alert}")
+
 last_path.write_text(json.dumps({"bias":bias,"time":datetime.now(timezone.utc).isoformat()}))
 
 payload={
-    "version":"V10.1 FIXED SL",
+    "version":"V10.2 MANUAL SEND",
     "source":source, "live":live_price, "price":live_price,
     "bias":bias, "reason":reason, "atr":atr, "eq":eq, "qml":qml,
     "entry":entry, "sl":sl, "tp1":tp1, "tp2":tp2,
@@ -118,15 +123,19 @@ with open("signals.json","w") as f: json.dump(payload,f,indent=2)
 with open("docs/signals.json","w") as f: json.dump(payload,f,indent=2)
 print(payload["scanner_line"])
 
-# Telegram
-if should_alert and bias in ["BUY","SELL"]:
+# === TELEGRAM ===
+if bias in ["BUY","SELL"] and should_alert:
     emoji="🟢" if bias=="BUY" else "🔴"
     risk = round(abs(entry-sl),2)
     r1 = round(abs(tp1-entry),2)
     r2 = round(abs(tp2-entry),2)
-    send_tg(f"""🚨🚨🚨 *ALCHEMIST {bias} V10.1* 🚨🚨🚨
+    rr1 = round(r1/risk,1) if risk else 0
+    rr2 = round(r2/risk,1) if risk else 0
+    mode = "MANUAL TEST" if is_manual else "REAL SIGNAL"
+    send_tg(f"""🚨🚨🚨 *ALCHEMIST {bias} V10.2* 🚨🚨🚨
 
 {emoji*3} *{bias} XAU - {reason}* {emoji*3}
+Mode: {mode}
 
 💰 Entry: *{entry}* Live {live_price}
 Source: *{source}*
@@ -134,18 +143,21 @@ Source: *{source}*
 EQ {eq} | QML {qml} | ATR {atr}$ REAL
 HH {lookback_high} LL {lookback_low}
 
-🎯 TP1: *{tp1}* (+{r1}$) RR 1:{round(r1/risk,1) if risk else 0}
-🎯 TP2: *{tp2}* (+{r2}$) RR 1:{round(r2/risk,1) if risk else 0}
+🎯 TP1: *{tp1}* (+{r1}$) RR 1:{rr1}
+🎯 TP2: *{tp2}* (+{r2}$) RR 1:{rr2}
 🛑 SL: *{sl}* (-{risk}$)
 
-✅ Fixed RR Logic
+✅ Fixed RR - Tight SL
 🌐 https://warp254.github.io/alchemist-gold-bot/
 """)
-elif len(closes)%12==0:
-    send_tg(f"""🏆 *Alchemist V10.1 Heartbeat*
+elif should_alert:
+    send_tg(f"""🏆 *Alchemist V10.2 Heartbeat*
 
 XAU {live_price} {bias} | {session_name}
 {source} | ATR {atr}$ REAL | EQ {eq} QML {qml}
 Bars {len(closes)} | {reason}
-Bot alive, waiting for sweep...
+Manual: {is_manual}
+Bot alive...
 """)
+else:
+    print("No alert needed - same bias as before, anti-spam")
