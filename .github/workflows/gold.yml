@@ -1,38 +1,40 @@
 name: Alchemist Gold
-
 on:
-  schedule:
-    - cron: '*/5 7-10,12-15 * * *'
   workflow_dispatch:
-
-permissions:
-  contents: write
+  schedule:
+    - cron: '*/15 * * * *'
 
 jobs:
   run:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
-
+          python-version: '3.11'
+          
       - name: Install deps
-        run: pip install requests
-
-      - name: Run Bot
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python main.py
-
-      - name: Save cooldown
         run: |
-          git config user.name "Alchemist Bot"
-          git config user.email "bot@alchemist.com"
-          git add last_signal.json || echo "no file yet"
-          git diff --staged --quiet || git commit -m "cooldown [skip ci]"
-          git push || echo "push fail"
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          
+      - name: Run Bot
+        run: python main.py
+          
+      - name: Save to docs
+        run: |
+          mkdir -p docs
+          cp signals.json docs/signals.json 2>/dev/null || echo "no root signals"
+          cp -r data docs/data 2>/dev/null || echo "no data folder"
+          ls -la docs/
+
+      - name: Commit and Push
+        run: |
+          git config user.name "alchemist-bot"
+          git config user.email "bot@alchemist.gold"
+          git add docs/
+          git diff --staged --quiet || git commit -m "Gold update $(date -u)"
+          git push
