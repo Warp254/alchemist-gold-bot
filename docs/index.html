@@ -1,41 +1,94 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Alchemist Gold V9 FREE - Warp254</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<style>body{background:#0a0a0a;color:#fafafa;font-family:monospace}</style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alchemist Gold V9 FREE - V8 ULTIMATE Inside</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0a;color:#fff;font-family:system-ui;padding:15px}
+.card{background:#111;border:1px solid #222;border-radius:16px;padding:18px;margin-bottom:14px}
+.gold{color:#ffd700}
+.green{color:#00ff88}
+.red{color:#ff4444}
+.small{color:#888;font-size:13px}
+.big{font-size:32px;font-weight:800}
+.badge{display:inline-block;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700}
+.badge-buy{background:#00ff88;color:#000}
+.badge-sell{background:#ff4444;color:#fff}
+.badge-neutral{background:#333;color:#aaa}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.live-dot{display:inline-block;width:8px;height:8px;background:#00ff88;border-radius:50%;animation:blink 1s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.2}}
+</style>
 </head>
-<body class="p-3 md:p-6">
-<div class="max-w-6xl mx-auto">
-<div class="flex justify-between items-center border border-zinc-800 rounded-2xl p-4 bg-zinc-900 mb-4">
-<div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-yellow-500 flex items-center justify-center font-bold text-black">A</div><div><b>Alchemist Gold V9 <span style="color:#D4AF37">FREE</span></b><div class="text-xs text-zinc-400">Warp254 • V8 ULTIMATE Inside</div></div></div>
-<div class="flex gap-2"><div class="px-3 py-1.5 rounded-full bg-black border border-zinc-800 text-xs">XAU <span id="live">4332.20</span> LIVE</div><div id="bias" class="px-3 py-1.5 rounded-full bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 text-xs font-bold">NEUTRAL</div></div>
+<body>
+
+<div class="card">
+<div class="small">Alchemist Gold V9 FREE • Warp254 • V8 ULTIMATE Inside</div>
+<div style="margin-top:8px"><span class="live-dot"></span> <span class="small" id="updated">Loading...</span></div>
 </div>
-<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-<div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4"><div class="text-xs text-zinc-500">Run Time</div><div class="text-2xl font-bold">8s</div><div class="text-[10px] text-emerald-400">GitHub Free</div></div>
-<div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4"><div class="text-xs text-zinc-500">Win Rate</div><div class="text-2xl font-bold">68.4%</div></div>
-<div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4"><div class="text-xs text-zinc-500">ATR</div><div id="atr" class="text-2xl font-bold">2.84$</div></div>
-<div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4"><div class="text-xs text-zinc-500">Hosting</div><div class="font-bold">FREE $0</div></div>
+
+<div class="card">
+<div class="small">XAUUSD LIVE PRICE</div>
+<div class="big gold" id="price">----</div>
+<div class="small" id="session">Checking session...</div>
 </div>
-<div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 mb-4">
-<div class="flex justify-between"><h3 class="font-bold text-sm">🔍 Live Scanner V8</h3><span id="kz" class="text-[10px] px-2 py-1 bg-zinc-800 rounded-full">OUTSIDE KZ sleep - OK</span></div>
-<div class="bg-black rounded-xl p-3 text-xs border border-zinc-800 mt-3"><div>live <span id="live2">4332.20</span> | bias <span id="bias2">NEUTRAL</span> | ATR <span id="atr2">2.84</span> | EQ 4328.10</div><div id="last" class="text-zinc-500 mt-1">OUTSIDE KZ live 4332.20 sleep - OK | bias NEUTRAL</div></div>
+
+<div class="grid">
+<div class="card">
+<div class="small">BIAS</div>
+<div class="big" id="bias">---</div>
 </div>
-<div class="bg-zinc-900 border border-zinc-800 rounded-2xl p-4"><h3 class="font-bold text-sm mb-3">📡 Personal Signals Feed</h3><div id="feed" class="space-y-2 text-xs"><div class="bg-black border border-yellow-500/30 rounded-xl p-3"><b>BUY V8 [LONDON 11/12 A+]</b> - waiting real signal from bot<br>QML 4325.40 Live 4332.20 | Waiting London KZ 10:00 Kisumu</div></div></div>
+<div class="card">
+<div class="small">WIN RATE</div>
+<div class="big green">68.4%</div>
+<div class="small">Run Time <span id="runtime">-</span></div>
 </div>
+</div>
+
+<div class="grid">
+<div class="card"><div class="small">ATR</div><div style="font-weight:700" id="atr">-</div></div>
+<div class="card"><div class="small">EQ</div><div style="font-weight:700" id="eq">-</div></div>
+<div class="card"><div class="small">QML</div><div style="font-weight:700" id="qml">-</div></div>
+<div class="card"><div class="small">HOSTING</div><div style="font-weight:700" class="green">FREE $0</div></div>
+</div>
+
+<div class="card">
+<div class="small">🔍 Live Scanner V8</div>
+<div style="margin-top:8px;font-family:monospace;background:#000;padding:10px;border-radius:8px;font-size:13px" id="scanner">Loading scanner...</div>
+</div>
+
+<div class="card">
+<div class="small">📡 Personal Signals Feed</div>
+<div style="margin-top:8px;font-family:monospace;background:#000;padding:10px;border-radius:8px;font-size:13px" id="feed">Loading feed...</div>
+</div>
+
+<div class="card" style="text-align:center">
+<div class="small">V9 NO-SWAP MODE • Trades only London 08-12 UTC + NY AM 12-16 UTC • Saves swap fees</div>
+<div class="small" style="margin-top:6px">Auto-refresh every 5 mins • Telegram alerts ON</div>
+</div>
+
 <script>
 async function load(){
- try{
-  const r=await fetch('./signals.json?'+Date.now()); const d=await r.json();
-  document.getElementById('live').textContent=d.live; document.getElementById('live2').textContent=d.live;
-  document.getElementById('bias').textContent=d.bias; document.getElementById('bias2').textContent=d.bias;
-  document.getElementById('atr').textContent=d.atr+'$'; document.getElementById('atr2').textContent=d.atr;
-  document.getElementById('last').textContent=d.last_scan; document.getElementById('kz').textContent=d.kz;
-  if(d.signals && d.signals.length){let h=''; d.signals.forEach(s=>{h+=`<div class="bg-black border border-zinc-800 rounded p-2"><b>${s.side} ${s.score}/12 ${s.kz}</b> QML ${s.qml} Live ${s.live} - ${s.time}</div>`}); document.getElementById('feed').innerHTML=h;}
- }catch(e){}
+try{
+ const r = await fetch('signals.json?t='+Date.now());
+ const d = await r.json();
+ document.getElementById('price').innerText = d.live || d.price || d.xau;
+ document.getElementById('bias').innerText = d.bias;
+ document.getElementById('bias').className = 'big ' + (d.bias=='BUY' ? 'green' : d.bias=='SELL' ? 'red' : '');
+ document.getElementById('atr').innerText = d.atr + '$';
+ document.getElementById('eq').innerText = d.eq;
+ document.getElementById('qml').innerText = d.qml || '-';
+ document.getElementById('session').innerText = d.session;
+ document.getElementById('scanner').innerText = d.scanner_line || d.scanner || '';
+ document.getElementById('feed').innerText = d.feed_line || d.feed || '';
+ document.getElementById('runtime').innerText = d.run_time || '';
+ document.getElementById('updated').innerText = 'Updated: ' + new Date(d.updated).toLocaleString();
+}catch(e){console.log(e)}
 }
-load(); setInterval(load,30000);
-async function lp(){try{const r=await fetch('https://data-api.binance.vision/api/v3/ticker/price?symbol=PAXGUSDT'); const j=await r.json(); document.getElementById('live').textContent=parseFloat(j.price).toFixed(2);}catch(e){}} lp(); setInterval(lp,10000);
+load();
+setInterval(load, 5*60*1000);
 </script>
-</body></html>
+</body>
+</html>
