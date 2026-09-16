@@ -22,13 +22,15 @@ jobs:
           pip install -r requirements.txt
           
       - name: Run Bot
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python main.py
           
       - name: Save to docs
         run: |
           mkdir -p docs
           cp signals.json docs/signals.json 2>/dev/null || echo "no root signals"
-          cp -r data docs/data 2>/dev/null || echo "no data folder"
           ls -la docs/
 
       - name: Commit and Push
