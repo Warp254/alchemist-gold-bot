@@ -2,7 +2,7 @@ name: Alchemist Gold
 on:
   workflow_dispatch:
   schedule:
-        - cron: '*/5 * * * *'  # V8 - Every 5 mins
+    - cron: '*/5 * * * *'
 
 jobs:
   run:
@@ -10,27 +10,34 @@ jobs:
     permissions:
       contents: write
     steps:
-            - uses: actions/checkout@v4
-            - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-            - name: Install deps
+      
+      - name: Install deps
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-            - name: Run Bot
+      
+      - name: Run Bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python main.py
-            - name: Save to docs
-        run: |
-          mkdir -p docs
-          cp signals.json docs/signals.json 2>/dev/null || echo "no signals"
-            - name: Commit and Push
+      
+      - name: Save and Push
         run: |
           git config user.name "alchemist-bot"
           git config user.email "bot@alchemist.gold"
-          git add docs/
-          git diff --staged --quiet || git commit -m "Gold V8 update $(date -u)"
-          git push
+          git pull --rebase origin main
+          mkdir -p docs
+          cp signals.json docs/signals.json 2>/dev/null || true
+          git add docs/ signals.json 2>/dev/null || git add docs/
+          git diff --staged --quiet || git commit -m "Gold V8 NO-SWAP $(date -u)"
+          git push || (git pull --rebase origin main && git push)
