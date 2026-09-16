@@ -1,20 +1,24 @@
 {
-  "live": 4338.61,
+  "version": "V9 FREE",
+  "brand": "Alchemist Gold V9 FREE",
+  "owner": "Warp254 \u2022 V8 ULTIMATE Inside",
+  "xau": 4338.9,
+  "price": 4338.9,
+  "live": 4338.9,
+  "live_price": 4338.9,
   "bias": "NEUTRAL",
-  "atr": 4.99,
-  "eq": 4314.26,
-  "kz": "LONDON",
-  "last_scan": "SELL V8 [LONDON 10/12 A]",
-  "updated": "2026-09-16T07:10:22.888438+00:00",
-  "signals": [
-    {
-      "time": "2026-09-16T07:10:22.888322+00:00",
-      "side": "SELL",
-      "qml": 4341.48,
-      "live": 4338.61,
-      "score": 10,
-      "kz": "LONDON",
-      "bias": "NEUTRAL"
-    }
-  ]
+  "display_bias": "NEUTRAL",
+  "atr": 4.64,
+  "eq": 4350.14,
+  "qml": 4350.82,
+  "win_rate": 68.4,
+  "run_time": "8.0s",
+  "hosting": "FREE $0",
+  "session": "LONDON",
+  "scanner_line": "live 4338.9 | bias NEUTRAL | ATR 4.64 | EQ 4350.14",
+  "signal_line": "SELL V8 [LONDON 10/12 A]",
+  "feed_line": "SELL 10/12 LONDON QML 4350.82 Live 4338.9 - 2026-09-16T07:38:31.959543+00:00",
+  "updated": "2026-09-16T07:38:31.959543+00:00",
+  "last_update": "2026-09-16T07:38:31.959543+00:00",
+  "timestamp": "2026-09-16T07:38:31.959543+00:00"
 }
