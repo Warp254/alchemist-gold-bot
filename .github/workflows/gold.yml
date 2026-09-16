@@ -2,7 +2,7 @@ name: Alchemist Gold
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/5 * * * *' # Runs every 5 min
 
 jobs:
   run:
@@ -10,27 +10,28 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
-      - name: Install deps
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
-      
+      - run: pip install -r requirements.txt
       - name: Run Bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python main.py
-      
+          TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+        run: |
+          # Skip if CLOSED to save GitHub minutes (exit fast)
+          H=$(date -u +%H)
+          if [ "$H" -lt 7 ] || [ "$H" -gt 16 ]; then
+            echo "Market closed $H UTC, saving mins"
+            mkdir -p docs
+            echo "{\"status\":\"sleeping $H UTC\"}" > docs/signals.json
+            exit 0
+          fi
+          python main.py
       - name: Save and Push
         run: |
           git config user.name "alchemist-bot"
@@ -38,6 +39,6 @@ jobs:
           mkdir -p docs
           cp signals.json docs/signals.json 2>/dev/null || true
           git add docs/ signals.json 2>/dev/null || git add docs/
-          git diff --staged --quiet || git commit -m "Gold V8 REAL $(date -u)"
+          git diff --staged --quiet || git commit -m "Gold V10 REAL $(date -u)"
           git pull --rebase --autostash origin main
           git push
