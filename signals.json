@@ -5,7 +5,7 @@
   "price": 3874.52,
   "bias": "NEUTRAL",
   "reason": "Consolidation at EQ",
-  "atr": 0.19,
+  "atr": 0.22,
   "eq": 3874.49,
   "qml": 3874.49,
   "entry": 3874.52,
@@ -13,11 +13,11 @@
   "tp1": 0,
   "tp2": 0,
   "hh": 3874.61,
-  "ll": 3874.37,
-  "session": "NEW YORK AM \ud83c\uddfa\ud83c\uddf8 NO SWAP (16UTC)",
-  "is_open": true,
+  "ll": 3874.38,
+  "session": "CLOSED (7UTC) SAVING MINS",
+  "is_open": false,
   "history_len": 30,
   "run_time": "0.1s",
   "scanner_line": "TWELVEDATA REAL 3874.52 NEUTRAL EQ 3874.49 QML 3874.49 SL 0 TP 0/0 Consolidation at EQ",
-  "updated": "2026-11-14T16:37:31.851522+00:00"
+  "updated": "2026-11-15T07:45:27.010634+00:00"
 }
